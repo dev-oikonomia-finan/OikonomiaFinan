@@ -1,5 +1,3 @@
-index.html
-100%
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -55,31 +53,109 @@ index.html
 
         <!-- Container Principal -->
         <main class="max-w-4xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6 my-auto">
-            <!-- Coluna Esquerda: Formulário -->
+            <!-- Coluna Esquerda: Formulário Inteligente -->
             <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-1">
                 <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Novo Lançamento</h2>
 
                 <form id="transacao-form" class="space-y-4">
+                    <!-- Tipo de Lançamento Geral -->
                     <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Tipo</label>
-                        <select id="tipo" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                            <option value="despesa">Despesa 📉</option>
-                            <option value="receita">Receita 📈</option>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Tipo de Lançamento</label>
+                        <select id="tipo-lancamento" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" required>
+                            <option value="">Selecione...</option>
+                            <option value="PIX">PIX</option>
+                            <option value="Compra">Compra</option>
+                            <option value="Conta">Conta (Recorrente/Fixa)</option>
+                            <option value="Outro">Outro / Avulso</option>
                         </select>
                     </div>
 
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Descrição</label>
-                        <input type="text" id="descricao" required placeholder="Ex: Supermercado..." class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-
+                    <!-- Valor -->
                     <div>
                         <label class="block text-sm font-medium text-slate-600 mb-1">Valor (R$)</label>
-                        <input type="number" step="0.01" id="valor" required placeholder="0.00" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <input type="number" step="0.01" id="valor" required placeholder="0,00" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
                     </div>
 
+                    <!-- BLOCO DINÂMICO: PIX -->
+                    <div id="bloco-pix" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes do PIX</span>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Subtipo</label>
+                            <select id="pix-subtipo" class="w-full border border-slate-300 rounded-lg p-2 text-xs">
+                                <option value="Pagamento">Pagamento (Saída)</option>
+                                <option value="Recebimento">Recebimento (Entrada)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Destinatário / Endereçado</label>
+                            <select id="select-destinatario-pix" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoDestinatario(this)">
+                                <option value="">Selecione ou cadastre...</option>
+                                <option value="novo">+ Cadastrar novo destinatário</option>
+                            </select>
+                            <input type="text" id="input-novo-destinatario" placeholder="Nome do destinatário" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-destinatario" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-destinatario" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- BLOCO DINÂMICO: COMPRA -->
+                    <div id="bloco-compra" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes da Compra</span>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Local / Estabelecimento</label>
+                            <select id="select-local-compra" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoLocal(this)">
+                                <option value="">Selecione o local...</option>
+                                <option value="novo">+ Cadastrar novo local (ex: Angeloni, Havan)</option>
+                            </select>
+                            <input type="text" id="input-novo-local" placeholder="Nome do local" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-local" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-local" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Forma de Pagamento</label>
+                            <select id="select-cartao-compra" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCartao(this)">
+                                <option value="">Selecione o cartão / forma...</option>
+                                <option value="Dinheiro">Dinheiro</option>
+                                <option value="Pix">Pix</option>
+                                <option value="novo">+ Cadastrar novo cartão (Visa, Mastercard, etc.)</option>
+                            </select>
+                            <input type="text" id="input-novo-cartao" placeholder="Ex: Mastercard Black" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-cartao" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-cartao" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- BLOCO DINÂMICO: CONTA -->
+                    <div id="bloco-conta" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes da Conta / Recorrência</span>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Conta / Concessionária</label>
+                            <select id="select-concessionaria" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoConcessionaria(this)">
+                                <option value="">Selecione a conta...</option>
+                                <option value="novo">+ Cadastrar nova conta (Celesc, Claro, Condomínio)</option>
+                            </select>
+                            <input type="text" id="input-nova-concessionaria" placeholder="Ex: Celesc, Claro Residencial" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-concessionaria" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-concessionaria" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Banco Pagador</label>
+                            <select id="select-banco-pagador" class="w-full border border-slate-300 rounded-lg p-2 text-xs">
+                                <option value="Banco do Brasil">Banco do Brasil</option>
+                                <option value="Itaú">Itaú</option>
+                                <option value="Nubank">Nubank</option>
+                                <option value="Outro">Outro</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Campos Padrão (Categoria e Data) -->
                     <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Categoria</label>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Categoria Principal</label>
                         <select id="categoria" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
                             <option value="Alimentação">Alimentação</option>
                             <option value="Moradia">Moradia</option>
@@ -111,7 +187,7 @@ index.html
                             <thead>
                                 <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
                                     <th class="p-3">Data</th>
-                                    <th class="p-3">Descrição</th>
+                                    <th class="p-3">Descrição / Detalhes</th>
                                     <th class="p-3">Categoria</th>
                                     <th class="p-3 text-right">Valor</th>
                                 </tr>
@@ -127,7 +203,7 @@ index.html
 
                 <!-- Rodapé com Resumo -->
                 <div class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center bg-slate-50 p-4 rounded-xl">
-                    <span class="text-sm font-medium text-slate-600">Total Registrado:</span>
+                    <span class="text-sm font-medium text-slate-600">Total Líquido:</span>
                     <span id="total-geral" class="text-xl font-bold text-slate-800">R$ 0,00</span>
                 </div>
             </section>
@@ -138,7 +214,94 @@ index.html
         </footer>
     </div>
 
-    <!-- Script Modular com Google Auth (Popup) -->
+    <!-- Funções Auxiliares Globais de UI (Modos Dinâmicos e Gestão de Required) -->
+    <script>
+        document.getElementById('tipo-lancamento')?.addEventListener('change', function() {
+            const tipo = this.value;
+
+            // Oculta blocos e limpa obrigatoriedade de inputs ocultos
+            document.getElementById('bloco-pix').classList.add('hidden');
+            document.getElementById('input-novo-destinatario').required = false;
+
+            document.getElementById('bloco-compra').classList.add('hidden');
+            document.getElementById('input-novo-local').required = false;
+            document.getElementById('input-novo-cartao').required = false;
+
+            document.getElementById('bloco-conta').classList.add('hidden');
+            document.getElementById('input-nova-concessionaria').required = false;
+
+            // Exibe o bloco selecionado
+            if (tipo === 'PIX') {
+                document.getElementById('bloco-pix').classList.remove('hidden');
+            } else if (tipo === 'Compra') {
+                document.getElementById('bloco-compra').classList.remove('hidden');
+            } else if (tipo === 'Conta') {
+                document.getElementById('bloco-conta').classList.remove('hidden');
+            }
+        });
+
+        function tratarSelecaoDestinatario(select) {
+            const input = document.getElementById('input-novo-destinatario');
+            const label = document.getElementById('label-salvar-destinatario');
+            if (select.value === 'novo') {
+                input.classList.remove('hidden');
+                label.classList.remove('hidden');
+                input.required = true;
+            } else {
+                input.classList.add('hidden');
+                label.classList.add('hidden');
+                input.required = false;
+                input.value = '';
+            }
+        }
+
+        function tratarSelecaoLocal(select) {
+            const input = document.getElementById('input-novo-local');
+            const label = document.getElementById('label-salvar-local');
+            if (select.value === 'novo') {
+                input.classList.remove('hidden');
+                label.classList.remove('hidden');
+                input.required = true;
+            } else {
+                input.classList.add('hidden');
+                label.classList.add('hidden');
+                input.required = false;
+                input.value = '';
+            }
+        }
+
+        function tratarSelecaoCartao(select) {
+            const input = document.getElementById('input-novo-cartao');
+            const label = document.getElementById('label-salvar-cartao');
+            if (select.value === 'novo') {
+                input.classList.remove('hidden');
+                label.classList.remove('hidden');
+                input.required = true;
+            } else {
+                input.classList.add('hidden');
+                label.classList.add('hidden');
+                input.required = false;
+                input.value = '';
+            }
+        }
+
+        function tratarSelecaoConcessionaria(select) {
+            const input = document.getElementById('input-nova-concessionaria');
+            const label = document.getElementById('label-salvar-concessionaria');
+            if (select.value === 'novo') {
+                input.classList.remove('hidden');
+                label.classList.remove('hidden');
+                input.required = true;
+            } else {
+                input.classList.add('hidden');
+                label.classList.add('hidden');
+                input.required = false;
+                input.value = '';
+            }
+        }
+    </script>
+
+    <!-- Script Modular com Google Auth e Integração Firestore -->
     <script type="module">
         import { firebaseConfig } from './oikonomia-fire-config.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -153,6 +316,11 @@ index.html
             getFirestore,
             collection,
             addDoc,
+            doc,
+            getDoc,
+            setDoc,
+            updateDoc,
+            arrayUnion,
             onSnapshot,
             query,
             orderBy,
@@ -174,43 +342,39 @@ index.html
 
         // Seus e-mails permitidos
         const EMAILS_PERMITIDOS = [
-            "oikonomia.finan@gmail.com",
             "eleomar.orsi@gmail.com",
-            "email-da-sua-esposa@gmail.com"
+            "juli.orsi@gmail.com",
+            "juli.orsi75@gmail.com",
         ];
 
         // Monitor de Estado de Autenticação
         onAuthStateChanged(auth, async (user) => {
             if (user) {
-                // Valida se o e-mail está na lista permitida
                 if (EMAILS_PERMITIDOS.length > 0 && !EMAILS_PERMITIDOS.includes(user.email)) {
                     authError.innerText = `Acesso negado para o e-mail: ${user.email}`;
                     authError.classList.remove('hidden');
-                    await signOut(auth); // Desconecta automaticamente
+                    await signOut(auth);
                     return;
                 }
 
-                // Usuário autorizado: exibe o app
                 authError.classList.add('hidden');
                 authScreen.classList.add('hidden');
                 appScreen.classList.remove('hidden');
                 userEmailDisplay.innerText = user.email;
+                carregarListasAuxiliares();
                 carregarDados();
             } else {
-                // Deslogado: mostra tela de login
                 authScreen.classList.remove('hidden');
                 appScreen.classList.add('hidden');
             }
         });
 
-        // Ação de Login com Google via Pop-up
         btnLoginGoogle.addEventListener('click', async () => {
             authError.classList.add('hidden');
             authError.innerText = '';
 
             try {
                 await signInWithPopup(auth, provider);
-                // O onAuthStateChanged vai capturar o sucesso e abrir a tela automaticamente
             } catch (error) {
                 console.error("Erro no login com pop-up:", error.code, error.message);
                 if (error.code !== 'auth/popup-closed-by-user') {
@@ -220,25 +384,137 @@ index.html
             }
         });
 
-        // Ação de Logout
         btnLogout.addEventListener('click', async () => {
             await signOut(auth);
         });
 
-        // Preenche a data de hoje
         document.getElementById('data').valueAsDate = new Date();
 
-        // Salvar Transação
+        // Carrega Listas Salvas do Firestore para os Selects
+        async function carregarListasAuxiliares() {
+            try {
+                const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const dados = docSnap.data();
+                    popularSelect('select-destinatario-pix', dados.destinatarios || []);
+                    popularSelect('select-local-compra', dados.locais || []);
+                    popularSelect('select-cartao-compra', dados.cartoes || [], ['Dinheiro', 'Pix']);
+                    popularSelect('select-concessionaria', dados.concessionarias || []);
+                }
+            } catch (e) {
+                console.error("Erro ao carregar listas auxiliares:", e);
+            }
+        }
+
+        function popularSelect(elementId, itens) {
+            const select = document.getElementById(elementId);
+            if (!select) return;
+
+            const primeiraOpcao = select.options[0];
+            const opcaoNovo = select.querySelector('option[value="novo"]');
+
+            select.innerHTML = '';
+            if (primeiraOpcao) select.appendChild(primeiraOpcao);
+
+            itens.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item;
+                opt.textContent = item;
+                select.appendChild(opt);
+            });
+
+            if (opcaoNovo) select.appendChild(opcaoNovo);
+        }
+
+        async function salvarItemAuxiliar(campo, valor) {
+            if (!valor) return;
+            const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
+            try {
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    await updateDoc(docRef, {
+                        [campo]: arrayUnion(valor)
+                    });
+                } else {
+                    await setDoc(docRef, {
+                        [campo]: [valor]
+                    });
+                }
+                carregarListasAuxiliares();
+            } catch (e) {
+                console.error("Erro ao salvar item auxiliar:", e);
+            }
+        }
+
+        // Salvar Transação Inteligente
         const form = document.getElementById('transacao-form');
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            const tipoGeral = document.getElementById('tipo-lancamento').value;
+            const valor = parseFloat(document.getElementById('valor').value);
+            const categoria = document.getElementById('categoria').value;
+            const data = document.getElementById('data').value;
+
+            let descricaoFinal = "";
+            let tipoTransacao = "despesa";
+
+            if (tipoGeral === 'PIX') {
+                const subtipo = document.getElementById('pix-subtipo').value;
+                let destinatario = document.getElementById('select-destinatario-pix').value;
+
+                if (destinatario === 'novo') {
+                    destinatario = document.getElementById('input-novo-destinatario').value.trim();
+                    if (document.getElementById('check-salvar-destinatario').checked && destinatario) {
+                        await salvarItemAuxiliar('destinatarios', destinatario);
+                    }
+                }
+                descricaoFinal = `PIX (${subtipo}): ${destinatario}`;
+                tipoTransacao = subtipo === 'Recebimento' ? 'receita' : 'despesa';
+
+            } else if (tipoGeral === 'Compra') {
+                let local = document.getElementById('select-local-compra').value;
+                if (local === 'novo') {
+                    local = document.getElementById('input-novo-local').value.trim();
+                    if (document.getElementById('check-salvar-local').checked && local) {
+                        await salvarItemAuxiliar('locais', local);
+                    }
+                }
+
+                let cartao = document.getElementById('select-cartao-compra').value;
+                if (cartao === 'novo') {
+                    cartao = document.getElementById('input-novo-cartao').value.trim();
+                    if (document.getElementById('check-salvar-cartao').checked && cartao) {
+                        await salvarItemAuxiliar('cartoes', cartao);
+                    }
+                }
+                descricaoFinal = `Compra em ${local} (Pgto: ${cartao})`;
+                tipoTransacao = 'despesa';
+
+            } else if (tipoGeral === 'Conta') {
+                let concessionaria = document.getElementById('select-concessionaria').value;
+                if (concessionaria === 'novo') {
+                    concessionaria = document.getElementById('input-nova-concessionaria').value.trim();
+                    if (document.getElementById('check-salvar-concessionaria').checked && concessionaria) {
+                        await salvarItemAuxiliar('concessionarias', concessionaria);
+                    }
+                }
+                const banco = document.getElementById('select-banco-pagador').value;
+                descricaoFinal = `Conta: ${concessionaria} (Banco: ${banco})`;
+                tipoTransacao = 'despesa';
+
+            } else {
+                descricaoFinal = "Outro Lançamento";
+                tipoTransacao = 'despesa';
+            }
+
             const novaTransacao = {
-                tipo: document.getElementById('tipo').value,
-                descricao: document.getElementById('descricao').value,
-                valor: parseFloat(document.getElementById('valor').value),
-                categoria: document.getElementById('categoria').value,
-                data: document.getElementById('data').value,
+                tipo: tipoTransacao,
+                descricao: descricaoFinal,
+                valor: valor,
+                categoria: categoria,
+                data: data,
                 criadoEm: serverTimestamp()
             };
 
@@ -246,9 +522,13 @@ index.html
                 await addDoc(collection(db, 'transacoes'), novaTransacao);
                 form.reset();
                 document.getElementById('data').valueAsDate = new Date();
+                document.getElementById('bloco-pix').classList.add('hidden');
+                document.getElementById('bloco-compra').classList.add('hidden');
+                document.getElementById('bloco-conta').classList.add('hidden');
+                carregarListasAuxiliares();
             } catch (error) {
                 console.error("Erro ao salvar transação: ", error);
-                alert("Erro ao salvar.");
+                alert("Erro ao salvar transação.");
             }
         });
 
@@ -271,7 +551,7 @@ index.html
 
                 snapshot.forEach((doc) => {
                     const t = doc.data();
-                    const valorFormatado = t.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                    const valorFormatado = (t.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                     const corValor = t.tipo === 'receita' ? 'text-emerald-600' : 'text-rose-600';
                     const sinal = t.tipo === 'receita' ? '+' : '-';
 
@@ -283,7 +563,7 @@ index.html
 
                     html += `
                         <tr class="hover:bg-slate-50 transition">
-                            <td class="p-3 text-slate-500">${t.data.split('-').reverse().join('/')}</td>
+                            <td class="p-3 text-slate-500">${t.data ? t.data.split('-').reverse().join('/') : '--/--/----'}</td>
                             <td class="p-3 font-medium">${t.descricao}</td>
                             <td class="p-3"><span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">${t.categoria}</span></td>
                             <td class="p-3 text-right font-bold ${corValor}">${sinal} ${valorFormatado}</td>
