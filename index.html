@@ -200,15 +200,45 @@
             }
         });
 
-        // Ação de Login com Google
+        // Ação de Login com Google com Tratamento de Erros Detalhado
         btnLoginGoogle.addEventListener('click', async () => {
             authError.classList.add('hidden');
+            authError.innerText = '';
+
+            const originalText = btnLoginGoogle.innerHTML;
+            btnLoginGoogle.innerHTML = `<span class="animate-pulse">Conectando...</span>`;
+            btnLoginGoogle.disabled = true;
+
             try {
                 await signInWithPopup(auth, provider);
             } catch (error) {
-                console.error("Erro no login com Google:", error);
-                authError.innerText = "Não foi possível realizar o login. Tente novamente.";
+                console.error("Erro no login com Google:", error.code, error.message);
+
+                let mensagemAmigavel = "Não foi possível realizar o login. Tente novamente.";
+
+                switch (error.code) {
+                    case 'auth/popup-closed-by-user':
+                        mensagemAmigavel = "A janela de login foi fechada antes de concluir. Tente novamente.";
+                        break;
+                    case 'auth/popup-blocked':
+                        mensagemAmigavel = "O navegador bloqueou a janela pop-up de login. Permita pop-ups para este site.";
+                        break;
+                    case 'auth/cancelled-popup-request':
+                        mensagemAmigavel = "Muitas solicitações abertas. Feche as outras abas e tente novamente.";
+                        break;
+                    case 'auth/network-request-failed':
+                        mensagemAmigavel = "Erro de conexão. Verifique sua internet e tente novamente.";
+                        break;
+                    case 'auth/unauthorized-domain':
+                        mensagemAmigavel = "Este domínio não está autorizado no painel do Firebase.";
+                        break;
+                }
+
+                authError.innerText = mensagemAmigavel;
                 authError.classList.remove('hidden');
+            } finally {
+                btnLoginGoogle.innerHTML = originalText;
+                btnLoginGoogle.disabled = false;
             }
         });
 
