@@ -271,16 +271,40 @@
             <h3 class="text-lg font-bold text-indigo-900 border-b pb-2">Editar Lançamento</h3>
             <form id="form-editar-transacao" class="space-y-3">
                 <input type="hidden" id="edit-id-transacao">
+
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Novo Valor (R$)</label>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Descrição / Detalhes</label>
+                    <input type="text" id="edit-descricao" required class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Valor (R$)</label>
                     <input type="number" step="0.01" id="edit-valor" required class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
                 </div>
+
+                <!-- Campos específicos para edição de Compra (Local e Pagamento) -->
+                <div id="edit-bloco-compra" class="space-y-3 hidden">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Local / Estabelecimento</label>
+                        <select id="edit-local" class="w-full border border-slate-300 rounded-lg p-2 text-xs">
+                            <!-- Preenchido via JS -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 mb-1">Forma de Pagamento</label>
+                        <select id="edit-cartao" class="w-full border border-slate-300 rounded-lg p-2 text-xs">
+                            <!-- Preenchido via JS -->
+                        </select>
+                    </div>
+                </div>
+
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Nova Categoria</label>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
                     <select id="edit-categoria" required class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
                         <!-- Preenchido dinamicamente -->
                     </select>
                 </div>
+
                 <div class="flex gap-2 pt-2">
                     <button type="button" onclick="fecharModalEditarTransacao()" class="w-1/2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-2 rounded-xl text-sm transition">Cancelar</button>
                     <button type="submit" class="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-xl text-sm transition">Salvar</button>
@@ -289,7 +313,7 @@
         </div>
     </div>
 
-    <!-- MODAL DE GERENCIAMENTO DE CADASTROS (LOCAIS, CARTÕES, CATEGORIAS) -->
+    <!-- MODAL DE GERENCIAMENTO DE CADASTROS -->
     <div id="modal-gerenciador" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
         <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
             <div class="flex justify-between items-center border-b pb-2">
@@ -538,6 +562,10 @@
                 popularSelect('select-local-compra', dados.locais || []);
                 popularSelect('select-cartao-compra', dados.cartoes || [], ['Dinheiro', 'Pix']);
                 popularSelect('select-concessionaria', dados.concessionarias || []);
+
+                // Preenchimento dos selects de edição
+                popularSelect('edit-local', dados.locais || []);
+                popularSelect('edit-cartao', dados.cartoes || [], ['Dinheiro', 'Pix']);
 
                 const categoriasSalvas = dados.categorias || CATEGORIAS_PADRAO;
                 popularSelect('select-categoria-pix', categoriasSalvas);
@@ -867,6 +895,9 @@
                         somaTotal -= t.valor;
                     }
 
+                    // Prepara string segura para passar no onclick
+                    const tDataJson = encodeURIComponent(JSON.stringify(t));
+
                     html += `
                         <tr class="hover:bg-slate-50 transition">
                             <td class="p-3 text-slate-500">${t.data ? t.data.split('-').reverse().join('/') : '--/--/----'}</td>
@@ -874,7 +905,7 @@
                             <td class="p-3"><span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">${t.categoria}</span></td>
                             <td class="p-3 text-right font-bold ${corValor}">${sinal} ${valorFormatado}</td>
                             <td class="p-3 text-center space-x-1">
-                                <button onclick="abrirEditarTransacao('${id}', ${t.valor}, '${t.categoria}')" class="text-indigo-600 hover:text-indigo-800 p-1 font-semibold text-xs bg-indigo-50 rounded" title="Editar">✏️</button>
+                                <button onclick="abrirEditarTransacao('${id}', '${tDataJson}')" class="text-indigo-600 hover:text-indigo-800 p-1 font-semibold text-xs bg-indigo-50 rounded" title="Editar">✏️</button>
                                 <button onclick="excluirTransacao('${id}')" class="text-rose-600 hover:text-rose-800 p-1 font-semibold text-xs bg-rose-50 rounded" title="Excluir">🗑️</button>
                             </td>
                         </tr>
@@ -887,10 +918,34 @@
             });
         }
 
-        window.abrirEditarTransacao = function(id, valorAtual, categoriaAtual) {
+        window.abrirEditarTransacao = function(id, tDataJsonStr) {
+            const t = JSON.parse(decodeURIComponent(tDataJsonStr));
             document.getElementById('edit-id-transacao').value = id;
-            document.getElementById('edit-valor').value = valorAtual;
-            document.getElementById('edit-categoria').value = categoriaAtual;
+            document.getElementById('edit-descricao').value = t.descricao || '';
+            document.getElementById('edit-valor').value = t.valor || 0;
+            document.getElementById('edit-categoria').value = t.categoria || '';
+
+            const blocoCompraEdit = document.getElementById('edit-bloco-compra');
+
+            // Verifica se a descrição indica que é uma Compra (padrão gerado: "Compra em [Local] (Pgto: [Cartao])")
+            if (t.descricao && t.descricao.startsWith('Compra em ')) {
+                blocoCompraEdit.classList.remove('hidden');
+
+                // Tenta extrair o local e a forma de pagamento da string de descrição para preencher os selects
+                try {
+                    const partes = t.descricao.replace('Compra em ', '').split(' (Pgto: ');
+                    const localExtraido = partes[0];
+                    const cartaoExtraido = partes[1] ? partes[1].replace(')', '') : '';
+
+                    document.getElementById('edit-local').value = localExtraido;
+                    document.getElementById('edit-cartao').value = cartaoExtraido;
+                } catch(e) {
+                    console.error("Erro ao analisar detalhes da compra para edição", e);
+                }
+            } else {
+                blocoCompraEdit.classList.add('hidden');
+            }
+
             document.getElementById('modal-editar-transacao').classList.remove('hidden');
         };
 
@@ -900,12 +955,23 @@
             const id = document.getElementById('edit-id-transacao').value;
             const novoValor = parseFloat(document.getElementById('edit-valor').value);
             const novaCategoria = document.getElementById('edit-categoria').value;
+            let novaDescricao = document.getElementById('edit-descricao').value;
+
+            const blocoCompraEdit = document.getElementById('edit-bloco-compra');
+            if (!blocoCompraEdit.classList.contains('hidden')) {
+                const novoLocal = document.getElementById('edit-local').value;
+                const novoCartao = document.getElementById('edit-cartao').value;
+                if (novoLocal && novoCartao) {
+                    novaDescricao = `Compra em ${novoLocal} (Pgto: ${novoCartao})`;
+                }
+            }
 
             try {
                 const docRef = doc(db, 'transacoes', id);
                 await updateDoc(docRef, {
                     valor: novoValor,
-                    categoria: novaCategoria
+                    categoria: novaCategoria,
+                    descricao: novaDescricao
                 });
                 fecharModalEditarTransacao();
             } catch (e) {
