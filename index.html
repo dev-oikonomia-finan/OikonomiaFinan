@@ -6,22 +6,19 @@
     <title>Meu Controle Financeiro</title>
     <!-- Tailwind CSS para um design moderno e responsivo -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- SDKs do Firebase (Versão compatível com navegador via CDN) -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
 <body class="bg-slate-100 min-h-screen font-sans text-slate-800">
 
     <!-- Cabeçalho -->
     <header class="bg-indigo-600 text-shadow shadow-md py-4 px-6 text-white flex justify-between items-center">
-        <h1 class="text-xl font-bold">?? Finanças Pessoais & Família</h1>
+        <h1 class="text-xl font-bold">💰 Finanças Pessoais & Família</h1>
         <span class="text-xs bg-indigo-500 px-3 py-1 rounded-full">Modo Online (Firebase)</span>
     </header>
 
     <!-- Container Principal -->
     <main class="max-w-4xl mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
 
-        <!-- Coluna Esquerda: Formulário de Lançamento Rápido (Perfeito para Celular) -->
+        <!-- Coluna Esquerda: Formulário de Lançamento Rápido -->
         <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-1">
             <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Novo Lançamento</h2>
 
@@ -29,8 +26,8 @@
                 <div>
                     <label class="block text-sm font-medium text-slate-600 mb-1">Tipo</label>
                     <select id="tipo" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <option value="despesa">Despesa ??</option>
-                        <option value="receita">Receita ??</option>
+                        <option value="despesa">Despesa 📉</option>
+                        <option value="receita">Receita 📈</option>
                     </select>
                 </div>
 
@@ -67,7 +64,7 @@
             </form>
         </section>
 
-        <!-- Coluna Direita: Resumo e Histórico (Perfeito para Computador) -->
+        <!-- Coluna Direita: Resumo e Histórico -->
         <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-2 flex flex-col justify-between">
             <div>
                 <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Histórico de Lançamentos</h2>
@@ -84,7 +81,6 @@
                             </tr>
                         </thead>
                         <tbody id="lista-transacoes" class="divide-y divide-slate-100 text-sm">
-                            <!-- Os dados do Firebase entram aqui dinamicamente -->
                             <tr>
                                 <td colspan="4" class="p-4 text-center text-slate-400">Carregando dados do Firebase...</td>
                             </tr>
@@ -102,7 +98,7 @@
 
     </main>
 
-    <!-- Script de Configuração e Lógica -->
+    <!-- Script de Configuração e Lógica Moderna -->
     <script type="module">
         import { firebaseConfig } from './oikonomia-fire-config.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -116,7 +112,7 @@
             serverTimestamp
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // Inicializa o Firebase
+        // Inicializa o Firebase de forma segura
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
@@ -138,10 +134,9 @@
             };
 
             try {
-                // Salva na coleção "transacoes" do Firestore (Modular)
                 await addDoc(collection(db, 'transacoes'), novaTransacao);
                 form.reset();
-                document.getElementById('data').valueAsDate = new Date(); // Reseta data para hoje
+                document.getElementById('data').valueAsDate = new Date();
             } catch (error) {
                 console.error("Erro ao salvar transação: ", error);
                 alert("Erro ao salvar. Verifique o console.");
@@ -170,7 +165,6 @@
                 const corValor = t.tipo === 'receita' ? 'text-emerald-600' : 'text-rose-600';
                 const sinal = t.tipo === 'receita' ? '+' : '-';
 
-                // Calcula saldo acumulado simples
                 if (t.tipo === 'receita') {
                     somaTotal += t.valor;
                 } else {
@@ -191,6 +185,6 @@
             totalGeralEl.innerText = somaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             totalGeralEl.className = `text-xl font-bold ${somaTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
         });
-        </script>
+    </script>
 </body>
 </html>
