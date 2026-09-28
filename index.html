@@ -9,7 +9,7 @@
 </head>
 <body class="bg-slate-100 min-h-screen font-sans text-slate-800 flex flex-col justify-between">
 
-    <!-- TELA DE LOGIN COM O GOOGLE (Visível apenas quando deslogado) -->
+    <!-- TELA DE LOGIN COM O GOOGLE -->
     <div id="auth-screen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
         <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 space-y-6 text-center">
             <div>
@@ -19,7 +19,6 @@
 
             <div class="py-4">
                 <button id="btn-login-google" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-sm">
-                    <!-- Ícone do Google -->
                     <svg class="w-5 h-5" viewBox="0 0 24 24">
                         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                         <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -38,7 +37,7 @@
         </div>
     </div>
 
-    <!-- APLICAÇÃO PRINCIPAL (Oculta até o usuário logar) -->
+    <!-- APLICAÇÃO PRINCIPAL -->
     <div id="app-screen" class="hidden flex flex-col min-h-screen justify-between">
         <!-- Cabeçalho -->
         <header class="bg-indigo-600 shadow-md py-4 px-6 text-white flex justify-between items-center">
@@ -97,16 +96,27 @@
                                 <input type="checkbox" id="check-salvar-destinatario" class="mr-1 rounded"> Salvar para o futuro
                             </label>
                         </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
+                            <select id="select-categoria-pix" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCategoria('pix', this)">
+                                <option value="">Selecione a categoria...</option>
+                                <option value="novo">+ Cadastrar nova categoria</option>
+                            </select>
+                            <input type="text" id="input-nova-categoria-pix" placeholder="Nome da nova categoria" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-categoria-pix" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-categoria-pix" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
+                        </div>
                     </div>
 
-                    <!-- BLOCO DINÂMICO: COMPRA -->
+                    <!-- BLOCO DINÂMICO: COMPRA (Categoria reposicionada logo abaixo de Forma de Pagamento) -->
                     <div id="bloco-compra" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
                         <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes da Compra</span>
                         <div>
                             <label class="block text-xs font-medium text-slate-600 mb-1">Local / Estabelecimento</label>
                             <select id="select-local-compra" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoLocal(this)">
                                 <option value="">Selecione o local...</option>
-                                <option value="novo">+ Cadastrar novo local (ex: Angeloni, Havan)</option>
+                                <option value="novo">+ Cadastrar novo local (ex: Posto Zandona, Angeloni)</option>
                             </select>
                             <input type="text" id="input-novo-local" placeholder="Nome do local" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
                             <label id="label-salvar-local" class="hidden items-center text-xs text-slate-600 cursor-pointer">
@@ -124,6 +134,18 @@
                             <input type="text" id="input-novo-cartao" placeholder="Ex: Mastercard Black" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
                             <label id="label-salvar-cartao" class="hidden items-center text-xs text-slate-600 cursor-pointer">
                                 <input type="checkbox" id="check-salvar-cartao" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
+                        </div>
+                        <!-- Categoria da Compra (Logo abaixo de Forma de Pagamento) -->
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
+                            <select id="select-categoria-compra" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCategoria('compra', this)">
+                                <option value="">Selecione a categoria...</option>
+                                <option value="novo">+ Cadastrar nova categoria</option>
+                            </select>
+                            <input type="text" id="input-nova-categoria-compra" placeholder="Nome da nova categoria" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-categoria-compra" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-categoria-compra" class="mr-1 rounded"> Salvar para o futuro
                             </label>
                         </div>
                     </div>
@@ -151,19 +173,37 @@
                                 <option value="Outro">Outro</option>
                             </select>
                         </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
+                            <select id="select-categoria-conta" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCategoria('conta', this)">
+                                <option value="">Selecione a categoria...</option>
+                                <option value="novo">+ Cadastrar nova categoria</option>
+                            </select>
+                            <input type="text" id="input-nova-categoria-conta" placeholder="Nome da nova categoria" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-categoria-conta" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-categoria-conta" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
+                        </div>
                     </div>
 
-                    <!-- CAMPO DINÂMICO DE CATEGORIA -->
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Categoria Principal</label>
-                        <select id="select-categoria" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none mb-1" onchange="tratarSelecaoCategoria(this)" required>
-                            <option value="">Selecione a categoria...</option>
-                            <option value="novo">+ Cadastrar nova categoria</option>
-                        </select>
-                        <input type="text" id="input-nova-categoria" placeholder="Nome da nova categoria" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
-                        <label id="label-salvar-categoria" class="hidden items-center text-xs text-slate-600 cursor-pointer">
-                            <input type="checkbox" id="check-salvar-categoria" class="mr-1 rounded"> Salvar para o futuro
-                        </label>
+                    <!-- BLOCO DINÂMICO: OUTRO / AVULSO -->
+                    <div id="bloco-outro" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes do Lançamento Avulso</span>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Descrição / Observação</label>
+                            <input type="text" id="input-outro-descricao" placeholder="Ex: Ajuste de caixa, Venda de item" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
+                            <select id="select-categoria-outro" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCategoria('outro', this)">
+                                <option value="">Selecione a categoria...</option>
+                                <option value="novo">+ Cadastrar nova categoria</option>
+                            </select>
+                            <input type="text" id="input-nova-categoria-outro" placeholder="Nome da nova categoria" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-categoria-outro" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-categoria-outro" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
+                        </div>
                     </div>
 
                     <!-- Data -->
@@ -215,29 +255,42 @@
         </footer>
     </div>
 
-    <!-- Funções Auxiliares Globais de UI (Modos Dinâmicos e Gestão de Required) -->
+    <!-- Funções Auxiliares Globais de UI -->
     <script>
+        // Objeto em memória para armazenar o mapeamento local -> categoria carregado do Firebase
+        let mapaLocalCategoria = {};
+
         document.getElementById('tipo-lancamento')?.addEventListener('change', function() {
             const tipo = this.value;
 
-            // Oculta blocos e limpa obrigatoriedade de inputs ocultos
             document.getElementById('bloco-pix').classList.add('hidden');
             document.getElementById('input-novo-destinatario').required = false;
+            document.getElementById('select-categoria-pix').required = false;
 
             document.getElementById('bloco-compra').classList.add('hidden');
             document.getElementById('input-novo-local').required = false;
             document.getElementById('input-novo-cartao').required = false;
+            document.getElementById('select-categoria-compra').required = false;
 
             document.getElementById('bloco-conta').classList.add('hidden');
             document.getElementById('input-nova-concessionaria').required = false;
+            document.getElementById('select-categoria-conta').required = false;
 
-            // Exibe o bloco selecionado
+            document.getElementById('bloco-outro').classList.add('hidden');
+            document.getElementById('select-categoria-outro').required = false;
+
             if (tipo === 'PIX') {
                 document.getElementById('bloco-pix').classList.remove('hidden');
+                document.getElementById('select-categoria-pix').required = true;
             } else if (tipo === 'Compra') {
                 document.getElementById('bloco-compra').classList.remove('hidden');
+                document.getElementById('select-categoria-compra').required = true;
             } else if (tipo === 'Conta') {
                 document.getElementById('bloco-conta').classList.remove('hidden');
+                document.getElementById('select-categoria-conta').required = true;
+            } else if (tipo === 'Outro') {
+                document.getElementById('bloco-outro').classList.remove('hidden');
+                document.getElementById('select-categoria-outro').required = true;
             }
         });
 
@@ -259,15 +312,24 @@
         function tratarSelecaoLocal(select) {
             const input = document.getElementById('input-novo-local');
             const label = document.getElementById('label-salvar-local');
+            const selectCategoria = document.getElementById('select-categoria-compra');
+
             if (select.value === 'novo') {
                 input.classList.remove('hidden');
                 label.classList.remove('hidden');
                 input.required = true;
+                selectCategoria.value = ""; // Limpa a categoria para o usuário escolher livremente
             } else {
                 input.classList.add('hidden');
                 label.classList.add('hidden');
                 input.required = false;
                 input.value = '';
+
+                // Relacionamento Inteligente: Busca a categoria salva para este local
+                const localSelecionado = select.value;
+                if (mapaLocalCategoria && mapaLocalCategoria[localSelecionado]) {
+                    selectCategoria.value = mapaLocalCategoria[localSelecionado];
+                }
             }
         }
 
@@ -301,9 +363,9 @@
             }
         }
 
-        function tratarSelecaoCategoria(select) {
-            const input = document.getElementById('input-nova-categoria');
-            const label = document.getElementById('label-salvar-categoria');
+        function tratarSelecaoCategoria(tipoBloco, select) {
+            const input = document.getElementById(`input-nova-categoria-${tipoBloco}`);
+            const label = document.getElementById(`label-salvar-categoria-${tipoBloco}`);
             if (select.value === 'novo') {
                 input.classList.remove('hidden');
                 label.classList.remove('hidden');
@@ -343,7 +405,6 @@
             serverTimestamp
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // Inicializa Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -356,14 +417,12 @@
         const btnLogout = document.getElementById('btn-logout');
         const userEmailDisplay = document.getElementById('user-email-display');
 
-        // Seus e-mails permitidos
         const EMAILS_PERMITIDOS = [
             "eleomar.orsi@gmail.com",
             "juli.orsi@gmail.com",
             "juli.orsi75@gmail.com",
         ];
 
-        // Monitor de Estado de Autenticação
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 if (EMAILS_PERMITIDOS.length > 0 && !EMAILS_PERMITIDOS.includes(user.email)) {
@@ -377,7 +436,7 @@
                 authScreen.classList.add('hidden');
                 appScreen.classList.remove('hidden');
                 userEmailDisplay.innerText = user.email;
-                carregarListasAuxiliares();
+                await carregarListasAuxiliares();
                 carregarDados();
             } else {
                 authScreen.classList.remove('hidden');
@@ -406,10 +465,8 @@
 
         document.getElementById('data').valueAsDate = new Date();
 
-        // Categorias padrão iniciais sugeridas caso o banco esteja vazio
-        const CATEGORIAS_PADRAO = ['Alimentação', 'Moradia', 'Transporte', 'Lazer', 'Investimentos', 'Outros'];
+        const CATEGORIAS_PADRAO = ['Alimentação', 'Moradia', 'Transporte', 'Carro Combustível', 'Carro Lavação', 'Lazer', 'Investimentos', 'Outros'];
 
-        // Carrega Listas Salvas do Firestore para os Selects
         async function carregarListasAuxiliares() {
             try {
                 const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
@@ -419,18 +476,26 @@
                     dados = docSnap.data();
                 }
 
+                // Armazena o mapeamento local-categoria globalmente para consulta no onchange
+                mapaLocalCategoria = dados.mapaLocalCategoria || {};
+
                 popularSelect('select-destinatario-pix', dados.destinatarios || []);
                 popularSelect('select-local-compra', dados.locais || []);
                 popularSelect('select-cartao-compra', dados.cartoes || [], ['Dinheiro', 'Pix']);
                 popularSelect('select-concessionaria', dados.concessionarias || []);
 
-                // Categorias unindo as salvas no banco com as padrão iniciais
                 const categoriasSalvas = dados.categorias || CATEGORIAS_PADRAO;
-                popularSelect('select-categoria', categoriasSalvas);
+                popularSelect('select-categoria-pix', categoriasSalvas);
+                popularSelect('select-categoria-compra', categoriasSalvas);
+                popularSelect('select-categoria-conta', categoriasSalvas);
+                popularSelect('select-categoria-outro', categoriasSalvas);
 
             } catch (e) {
                 console.error("Erro ao carregar listas auxiliares:", e);
-                popularSelect('select-categoria', CATEGORIAS_PADRAO);
+                popularSelect('select-categoria-pix', CATEGORIAS_PADRAO);
+                popularSelect('select-categoria-compra', CATEGORIAS_PADRAO);
+                popularSelect('select-categoria-conta', CATEGORIAS_PADRAO);
+                popularSelect('select-categoria-outro', CATEGORIAS_PADRAO);
             }
         }
 
@@ -451,7 +516,6 @@
                 select.appendChild(opt);
             });
 
-            // Evita duplicatas caso a categoria padrão já esteja na lista salva
             const itensUnicos = [...new Set(itens)];
             itensUnicos.forEach(item => {
                 const opt = document.createElement('option');
@@ -477,9 +541,31 @@
                         [campo]: [valor]
                     });
                 }
-                carregarListasAuxiliares();
+                await carregarListasAuxiliares();
             } catch (e) {
                 console.error("Erro ao salvar item auxiliar:", e);
+            }
+        }
+
+        // Função específica para salvar o relacionamento Local <-> Categoria
+        async function salvarRelacionamentoLocalCategoria(local, categoria) {
+            if (!local || !categoria) return;
+            const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
+            try {
+                const docSnap = await getDoc(docRef);
+                let dados = docSnap.exists() ? docSnap.data() : {};
+                let mapa = dados.mapaLocalCategoria || {};
+
+                mapa[local] = categoria; // Atualiza ou insere o relacionamento
+
+                if (docSnap.exists()) {
+                    await updateDoc(docRef, { mapaLocalCategoria: mapa });
+                } else {
+                    await setDoc(docRef, { mapaLocalCategoria: mapa });
+                }
+                mapaLocalCategoria = mapa;
+            } catch (e) {
+                console.error("Erro ao salvar relacionamento local/categoria:", e);
             }
         }
 
@@ -492,17 +578,9 @@
             const valor = parseFloat(document.getElementById('valor').value);
             const data = document.getElementById('data').value;
 
-            // Tratamento da Categoria Dinâmica
-            let categoria = document.getElementById('select-categoria').value;
-            if (categoria === 'novo') {
-                categoria = document.getElementById('input-nova-categoria').value.trim();
-                if (document.getElementById('check-salvar-categoria').checked && categoria) {
-                    await salvarItemAuxiliar('categorias', categoria);
-                }
-            }
-
             let descricaoFinal = "";
             let tipoTransacao = "despesa";
+            let categoria = "";
 
             if (tipoGeral === 'PIX') {
                 const subtipo = document.getElementById('pix-subtipo').value;
@@ -514,6 +592,15 @@
                         await salvarItemAuxiliar('destinatarios', destinatario);
                     }
                 }
+
+                categoria = document.getElementById('select-categoria-pix').value;
+                if (categoria === 'novo') {
+                    categoria = document.getElementById('input-nova-categoria-pix').value.trim();
+                    if (document.getElementById('check-salvar-categoria-pix').checked && categoria) {
+                        await salvarItemAuxiliar('categorias', categoria);
+                    }
+                }
+
                 descricaoFinal = `PIX (${subtipo}): ${destinatario}`;
                 tipoTransacao = subtipo === 'Recebimento' ? 'receita' : 'despesa';
 
@@ -533,6 +620,20 @@
                         await salvarItemAuxiliar('cartoes', cartao);
                     }
                 }
+
+                categoria = document.getElementById('select-categoria-compra').value;
+                if (categoria === 'novo') {
+                    categoria = document.getElementById('input-nova-categoria-compra').value.trim();
+                    if (document.getElementById('check-salvar-categoria-compra').checked && categoria) {
+                        await salvarItemAuxiliar('categorias', categoria);
+                    }
+                }
+
+                // Salva ou atualiza a relação do local com a categoria escolhida
+                if (local && local !== 'novo') {
+                    await salvarRelacionamentoLocalCategoria(local, categoria);
+                }
+
                 descricaoFinal = `Compra em ${local} (Pgto: ${cartao})`;
                 tipoTransacao = 'despesa';
 
@@ -545,11 +646,28 @@
                     }
                 }
                 const banco = document.getElementById('select-banco-pagador').value;
+
+                categoria = document.getElementById('select-categoria-conta').value;
+                if (categoria === 'novo') {
+                    categoria = document.getElementById('input-nova-categoria-conta').value.trim();
+                    if (document.getElementById('check-salvar-categoria-conta').checked && categoria) {
+                        await salvarItemAuxiliar('categorias', categoria);
+                    }
+                }
+
                 descricaoFinal = `Conta: ${concessionaria} (Banco: ${banco})`;
                 tipoTransacao = 'despesa';
 
-            } else {
-                descricaoFinal = "Outro Lançamento";
+            } else if (tipoGeral === 'Outro') {
+                const obs = document.getElementById('input-outro-descricao').value.trim();
+                categoria = document.getElementById('select-categoria-outro').value;
+                if (categoria === 'novo') {
+                    categoria = document.getElementById('input-nova-categoria-outro').value.trim();
+                    if (document.getElementById('check-salvar-categoria-outro').checked && categoria) {
+                        await salvarItemAuxiliar('categorias', categoria);
+                    }
+                }
+                descricaoFinal = obs ? `Avulso: ${obs}` : "Outro Lançamento";
                 tipoTransacao = 'despesa';
             }
 
@@ -557,7 +675,7 @@
                 tipo: tipoTransacao,
                 descricao: descricaoFinal,
                 valor: valor,
-                categoria: categoria,
+                categoria: categoria || 'Outros',
                 data: data,
                 criadoEm: serverTimestamp()
             };
@@ -566,19 +684,18 @@
                 await addDoc(collection(db, 'transacoes'), novaTransacao);
                 form.reset();
                 document.getElementById('data').valueAsDate = new Date();
-                document.getElementById('bloco-pix').classList.add('hidden');
-                document.getElementById('bloco-compra').classList.add('hidden');
-                document.getElementById('bloco-conta').classList.add('hidden');
-                document.getElementById('input-nova-categoria').classList.add('hidden');
-                document.getElementById('label-salvar-categoria').classList.add('hidden');
-                carregarListasAuxiliares();
+
+                ['bloco-pix', 'bloco-compra', 'bloco-conta', 'bloco-outro'].forEach(id => {
+                    document.getElementById(id).classList.add('hidden');
+                });
+
+                await carregarListasAuxiliares();
             } catch (error) {
                 console.error("Erro ao salvar transação: ", error);
                 alert("Erro ao salvar transação.");
             }
         });
 
-        // Carregar Dados em Tempo Real
         function carregarDados() {
             const listaTransacoesEl = document.getElementById('lista-transacoes');
             const totalGeralEl = document.getElementById('total-geral');
