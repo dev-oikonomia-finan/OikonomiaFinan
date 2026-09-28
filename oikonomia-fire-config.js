@@ -1,7 +1,7 @@
 // firebase-config.js
 export const firebaseConfig = {
     apiKey: "AIzaSyBulMJwqhELbtdUugae7fnyBqOCIfetAgo",
-    authDomain: "oikonomifinan.firebaseapp.com",
+    authDomain: "oikonomiafin4n.firebaseapp.com",
     projectId: "OikonomiaFIN4N",
     storageBucket: "oikonomiafin4n.firebasestorage.app",
     messagingSenderId: "885380415405",
