@@ -153,19 +153,20 @@
                         </div>
                     </div>
 
-                    <!-- Campos Padrão (Categoria e Data) -->
+                    <!-- CAMPO DINÂMICO DE CATEGORIA -->
                     <div>
                         <label class="block text-sm font-medium text-slate-600 mb-1">Categoria Principal</label>
-                        <select id="categoria" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                            <option value="Alimentação">Alimentação</option>
-                            <option value="Moradia">Moradia</option>
-                            <option value="Transporte">Transporte</option>
-                            <option value="Lazer">Lazer</option>
-                            <option value="Investimentos">Investimentos</option>
-                            <option value="Outros">Outros</option>
+                        <select id="select-categoria" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none mb-1" onchange="tratarSelecaoCategoria(this)" required>
+                            <option value="">Selecione a categoria...</option>
+                            <option value="novo">+ Cadastrar nova categoria</option>
                         </select>
+                        <input type="text" id="input-nova-categoria" placeholder="Nome da nova categoria" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                        <label id="label-salvar-categoria" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                            <input type="checkbox" id="check-salvar-categoria" class="mr-1 rounded"> Salvar para o futuro
+                        </label>
                     </div>
 
+                    <!-- Data -->
                     <div>
                         <label class="block text-sm font-medium text-slate-600 mb-1">Data</label>
                         <input type="date" id="data" required class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
@@ -299,6 +300,21 @@
                 input.value = '';
             }
         }
+
+        function tratarSelecaoCategoria(select) {
+            const input = document.getElementById('input-nova-categoria');
+            const label = document.getElementById('label-salvar-categoria');
+            if (select.value === 'novo') {
+                input.classList.remove('hidden');
+                label.classList.remove('hidden');
+                input.required = true;
+            } else {
+                input.classList.add('hidden');
+                label.classList.add('hidden');
+                input.required = false;
+                input.value = '';
+            }
+        }
     </script>
 
     <!-- Script Modular com Google Auth e Integração Firestore -->
@@ -390,24 +406,35 @@
 
         document.getElementById('data').valueAsDate = new Date();
 
+        // Categorias padrão iniciais sugeridas caso o banco esteja vazio
+        const CATEGORIAS_PADRAO = ['Alimentação', 'Moradia', 'Transporte', 'Lazer', 'Investimentos', 'Outros'];
+
         // Carrega Listas Salvas do Firestore para os Selects
         async function carregarListasAuxiliares() {
             try {
                 const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
                 const docSnap = await getDoc(docRef);
+                let dados = {};
                 if (docSnap.exists()) {
-                    const dados = docSnap.data();
-                    popularSelect('select-destinatario-pix', dados.destinatarios || []);
-                    popularSelect('select-local-compra', dados.locais || []);
-                    popularSelect('select-cartao-compra', dados.cartoes || [], ['Dinheiro', 'Pix']);
-                    popularSelect('select-concessionaria', dados.concessionarias || []);
+                    dados = docSnap.data();
                 }
+
+                popularSelect('select-destinatario-pix', dados.destinatarios || []);
+                popularSelect('select-local-compra', dados.locais || []);
+                popularSelect('select-cartao-compra', dados.cartoes || [], ['Dinheiro', 'Pix']);
+                popularSelect('select-concessionaria', dados.concessionarias || []);
+
+                // Categorias unindo as salvas no banco com as padrão iniciais
+                const categoriasSalvas = dados.categorias || CATEGORIAS_PADRAO;
+                popularSelect('select-categoria', categoriasSalvas);
+
             } catch (e) {
                 console.error("Erro ao carregar listas auxiliares:", e);
+                popularSelect('select-categoria', CATEGORIAS_PADRAO);
             }
         }
 
-        function popularSelect(elementId, itens) {
+        function popularSelect(elementId, itens, fixos = []) {
             const select = document.getElementById(elementId);
             if (!select) return;
 
@@ -417,7 +444,16 @@
             select.innerHTML = '';
             if (primeiraOpcao) select.appendChild(primeiraOpcao);
 
-            itens.forEach(item => {
+            fixos.forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = f;
+                opt.textContent = f;
+                select.appendChild(opt);
+            });
+
+            // Evita duplicatas caso a categoria padrão já esteja na lista salva
+            const itensUnicos = [...new Set(itens)];
+            itensUnicos.forEach(item => {
                 const opt = document.createElement('option');
                 opt.value = item;
                 opt.textContent = item;
@@ -454,8 +490,16 @@
 
             const tipoGeral = document.getElementById('tipo-lancamento').value;
             const valor = parseFloat(document.getElementById('valor').value);
-            const categoria = document.getElementById('categoria').value;
             const data = document.getElementById('data').value;
+
+            // Tratamento da Categoria Dinâmica
+            let categoria = document.getElementById('select-categoria').value;
+            if (categoria === 'novo') {
+                categoria = document.getElementById('input-nova-categoria').value.trim();
+                if (document.getElementById('check-salvar-categoria').checked && categoria) {
+                    await salvarItemAuxiliar('categorias', categoria);
+                }
+            }
 
             let descricaoFinal = "";
             let tipoTransacao = "despesa";
@@ -525,6 +569,8 @@
                 document.getElementById('bloco-pix').classList.add('hidden');
                 document.getElementById('bloco-compra').classList.add('hidden');
                 document.getElementById('bloco-conta').classList.add('hidden');
+                document.getElementById('input-nova-categoria').classList.add('hidden');
+                document.getElementById('label-salvar-categoria').classList.add('hidden');
                 carregarListasAuxiliares();
             } catch (error) {
                 console.error("Erro ao salvar transação: ", error);
