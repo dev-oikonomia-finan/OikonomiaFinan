@@ -52,9 +52,9 @@
 
         <!-- Container Principal -->
         <main class="max-w-4xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6 my-auto">
-            <!-- Coluna Esquerda: Formulário Inteligente -->
-            <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-1">
-                <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Novo Lançamento</h2>
+            <!-- Coluna Esquerda: Formulário Inteligente + Gerenciadores -->
+            <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-1 space-y-4">
+                <h2 class="text-lg font-semibold text-indigo-900 border-b pb-2">Novo Lançamento</h2>
 
                 <form id="transacao-form" class="space-y-4">
                     <!-- Tipo de Lançamento Geral -->
@@ -109,7 +109,7 @@
                         </div>
                     </div>
 
-                    <!-- BLOCO DINÂMICO: COMPRA (Categoria reposicionada logo abaixo de Forma de Pagamento) -->
+                    <!-- BLOCO DINÂMICO: COMPRA -->
                     <div id="bloco-compra" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
                         <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes da Compra</span>
                         <div>
@@ -136,7 +136,6 @@
                                 <input type="checkbox" id="check-salvar-cartao" class="mr-1 rounded"> Salvar para o futuro
                             </label>
                         </div>
-                        <!-- Categoria da Compra (Logo abaixo de Forma de Pagamento) -->
                         <div>
                             <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
                             <select id="select-categoria-compra" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCategoria('compra', this)">
@@ -216,6 +215,16 @@
                         Salvar Lançamento
                     </button>
                 </form>
+
+                <!-- Atalhos de Gestão de Cadastros -->
+                <div class="pt-4 border-t border-slate-100 space-y-2">
+                    <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block">Gerenciar Cadastros</span>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="abrirModalGerenciador('locais')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs py-2 px-1 rounded-lg font-medium transition">Locais</button>
+                        <button onclick="abrirModalGerenciador('cartoes')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs py-2 px-1 rounded-lg font-medium transition">Pagamentos</button>
+                        <button onclick="abrirModalGerenciador('categorias')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs py-2 px-1 rounded-lg font-medium transition">Categorias</button>
+                    </div>
+                </div>
             </section>
 
             <!-- Coluna Direita: Histórico -->
@@ -231,11 +240,12 @@
                                     <th class="p-3">Descrição / Detalhes</th>
                                     <th class="p-3">Categoria</th>
                                     <th class="p-3 text-right">Valor</th>
+                                    <th class="p-3 text-center">Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="lista-transacoes" class="divide-y divide-slate-100 text-sm">
                                 <tr>
-                                    <td colspan="4" class="p-4 text-center text-slate-400">Carregando dados...</td>
+                                    <td colspan="5" class="p-4 text-center text-slate-400">Carregando dados...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -255,10 +265,47 @@
         </footer>
     </div>
 
+    <!-- MODAL DE EDIÇÃO DE LANÇAMENTO -->
+    <div id="modal-editar-transacao" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
+            <h3 class="text-lg font-bold text-indigo-900 border-b pb-2">Editar Lançamento</h3>
+            <form id="form-editar-transacao" class="space-y-3">
+                <input type="hidden" id="edit-id-transacao">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Novo Valor (R$)</label>
+                    <input type="number" step="0.01" id="edit-valor" required class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1">Nova Categoria</label>
+                    <select id="edit-categoria" required class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <!-- Preenchido dinamicamente -->
+                    </select>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="fecharModalEditarTransacao()" class="w-1/2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-2 rounded-xl text-sm transition">Cancelar</button>
+                    <button type="submit" class="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-xl text-sm transition">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DE GERENCIAMENTO DE CADASTROS (LOCAIS, CARTÕES, CATEGORIAS) -->
+    <div id="modal-gerenciador" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 id="titulo-gerenciador" class="text-lg font-bold text-indigo-900">Gerenciar Cadastros</h3>
+                <button onclick="fecharModalGerenciador()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+            </div>
+            <div class="max-h-64 overflow-y-auto divide-y divide-slate-100" id="lista-gerenciador-itens">
+                <!-- Itens carregados via JS -->
+            </div>
+        </div>
+    </div>
+
     <!-- Funções Auxiliares Globais de UI -->
     <script>
-        // Objeto em memória para armazenar o mapeamento local -> categoria carregado do Firebase
         let mapaLocalCategoria = {};
+        let dadosGlobaisAuxiliares = {};
 
         document.getElementById('tipo-lancamento')?.addEventListener('change', function() {
             const tipo = this.value;
@@ -318,14 +365,13 @@
                 input.classList.remove('hidden');
                 label.classList.remove('hidden');
                 input.required = true;
-                selectCategoria.value = ""; // Limpa a categoria para o usuário escolher livremente
+                selectCategoria.value = "";
             } else {
                 input.classList.add('hidden');
                 label.classList.add('hidden');
                 input.required = false;
                 input.value = '';
 
-                // Relacionamento Inteligente: Busca a categoria salva para este local
                 const localSelecionado = select.value;
                 if (mapaLocalCategoria && mapaLocalCategoria[localSelecionado]) {
                     selectCategoria.value = mapaLocalCategoria[localSelecionado];
@@ -377,6 +423,14 @@
                 input.value = '';
             }
         }
+
+        function fecharModalEditarTransacao() {
+            document.getElementById('modal-editar-transacao').classList.add('hidden');
+        }
+
+        function fecharModalGerenciador() {
+            document.getElementById('modal-gerenciador').classList.add('hidden');
+        }
     </script>
 
     <!-- Script Modular com Google Auth e Integração Firestore -->
@@ -398,6 +452,7 @@
             getDoc,
             setDoc,
             updateDoc,
+            deleteDoc,
             arrayUnion,
             onSnapshot,
             query,
@@ -476,7 +531,7 @@
                     dados = docSnap.data();
                 }
 
-                // Armazena o mapeamento local-categoria globalmente para consulta no onchange
+                dadosGlobaisAuxiliares = dados;
                 mapaLocalCategoria = dados.mapaLocalCategoria || {};
 
                 popularSelect('select-destinatario-pix', dados.destinatarios || []);
@@ -489,6 +544,7 @@
                 popularSelect('select-categoria-compra', categoriasSalvas);
                 popularSelect('select-categoria-conta', categoriasSalvas);
                 popularSelect('select-categoria-outro', categoriasSalvas);
+                popularSelect('edit-categoria', categoriasSalvas);
 
             } catch (e) {
                 console.error("Erro ao carregar listas auxiliares:", e);
@@ -496,6 +552,7 @@
                 popularSelect('select-categoria-compra', CATEGORIAS_PADRAO);
                 popularSelect('select-categoria-conta', CATEGORIAS_PADRAO);
                 popularSelect('select-categoria-outro', CATEGORIAS_PADRAO);
+                popularSelect('edit-categoria', CATEGORIAS_PADRAO);
             }
         }
 
@@ -547,7 +604,6 @@
             }
         }
 
-        // Função específica para salvar o relacionamento Local <-> Categoria
         async function salvarRelacionamentoLocalCategoria(local, categoria) {
             if (!local || !categoria) return;
             const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
@@ -556,7 +612,7 @@
                 let dados = docSnap.exists() ? docSnap.data() : {};
                 let mapa = dados.mapaLocalCategoria || {};
 
-                mapa[local] = categoria; // Atualiza ou insere o relacionamento
+                mapa[local] = categoria;
 
                 if (docSnap.exists()) {
                     await updateDoc(docRef, { mapaLocalCategoria: mapa });
@@ -568,6 +624,93 @@
                 console.error("Erro ao salvar relacionamento local/categoria:", e);
             }
         }
+
+        // Expor gerenciamento para o escopo global
+        window.abrirModalGerenciador = function(tipo) {
+            const modal = document.getElementById('modal-gerenciador');
+            const titulo = document.getElementById('titulo-gerenciador');
+            const container = document.getElementById('lista-gerenciador-itens');
+
+            let campoFirestore = '';
+            let nomeTitulo = '';
+
+            if (tipo === 'locais') {
+                campoFirestore = 'locais';
+                nomeTitulo = 'Locais e Estabelecimentos';
+            } else if (tipo === 'cartoes') {
+                campoFirestore = 'cartoes';
+                nomeTitulo = 'Formas de Pagamento / Cartões';
+            } else if (tipo === 'categorias') {
+                campoFirestore = 'categorias';
+                nomeTitulo = 'Categorias';
+            }
+
+            titulo.innerText = nomeTitulo;
+            const itens = dadosGlobaisAuxiliares[campoFirestore] || (tipo === 'categorias' ? CATEGORIAS_PADRAO : []);
+
+            if (itens.length === 0) {
+                container.innerHTML = `<p class="p-4 text-center text-slate-400 text-sm">Nenhum item cadastrado.</p>`;
+            } else {
+                let html = '';
+                itens.forEach(item => {
+                    html += `
+                        <div class="py-2.5 flex justify-between items-center text-sm">
+                            <span class="font-medium text-slate-700">${item}</span>
+                            <div class="flex gap-2">
+                                <button onclick="editarItemAuxiliar('${campoFirestore}', '${item}')" class="text-indigo-600 hover:text-indigo-800 text-xs font-semibold px-2 py-1 bg-indigo-50 rounded">Editar</button>
+                                <button onclick="excluirItemAuxiliar('${campoFirestore}', '${item}')" class="text-rose-600 hover:text-rose-800 text-xs font-semibold px-2 py-1 bg-rose-50 rounded">Excluir</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            }
+
+            modal.classList.remove('hidden');
+        };
+
+        window.editarItemAuxiliar = async function(campo, antigoValor) {
+            const novoValor = prompt(`Editar "${antigoValor}" para:`, antigoValor);
+            if (!novoValor || novoValor.trim() === '' || novoValor === antigoValor) return;
+
+            const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
+            try {
+                const docSnap = await getDoc(docRef);
+                if (!docSnap.exists()) return;
+                let dados = docSnap.data();
+                let lista = dados[campo] || [];
+
+                lista = lista.map(i => i === antigoValor ? novoValor.trim() : i);
+
+                await updateDoc(docRef, { [campo]: lista });
+                await carregarListasAuxiliares();
+                window.abrirModalGerenciador(campo === 'locais' ? 'locais' : campo === 'cartoes' ? 'cartoes' : 'categorias');
+            } catch (e) {
+                console.error("Erro ao editar item:", e);
+                alert("Erro ao editar.");
+            }
+        };
+
+        window.excluirItemAuxiliar = async function(campo, valorParaExcluir) {
+            if (!confirm(`Deseja realmente excluir "${valorParaExcluir}"?`)) return;
+
+            const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
+            try {
+                const docSnap = await getDoc(docRef);
+                if (!docSnap.exists()) return;
+                let dados = docSnap.data();
+                let lista = dados[campo] || [];
+
+                lista = lista.filter(i => i !== valorParaExcluir);
+
+                await updateDoc(docRef, { [campo]: lista });
+                await carregarListasAuxiliares();
+                window.abrirModalGerenciador(campo === 'locais' ? 'locais' : campo === 'cartoes' ? 'cartoes' : 'categorias');
+            } catch (e) {
+                console.error("Erro ao excluir item:", e);
+                alert("Erro ao excluir.");
+            }
+        };
 
         // Salvar Transação Inteligente
         const form = document.getElementById('transacao-form');
@@ -629,7 +772,6 @@
                     }
                 }
 
-                // Salva ou atualiza a relação do local com a categoria escolhida
                 if (local && local !== 'novo') {
                     await salvarRelacionamentoLocalCategoria(local, categoria);
                 }
@@ -707,13 +849,14 @@
                 let somaTotal = 0;
 
                 if (snapshot.empty) {
-                    listaTransacoesEl.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">Nenhum lançamento encontrado.</td></tr>`;
+                    listaTransacoesEl.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">Nenhum lançamento encontrado.</td></tr>`;
                     totalGeralEl.innerText = "R$ 0,00";
                     return;
                 }
 
-                snapshot.forEach((doc) => {
-                    const t = doc.data();
+                snapshot.forEach((docSnap) => {
+                    const t = docSnap.data();
+                    const id = docSnap.id;
                     const valorFormatado = (t.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                     const corValor = t.tipo === 'receita' ? 'text-emerald-600' : 'text-rose-600';
                     const sinal = t.tipo === 'receita' ? '+' : '-';
@@ -730,6 +873,10 @@
                             <td class="p-3 font-medium">${t.descricao}</td>
                             <td class="p-3"><span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">${t.categoria}</span></td>
                             <td class="p-3 text-right font-bold ${corValor}">${sinal} ${valorFormatado}</td>
+                            <td class="p-3 text-center space-x-1">
+                                <button onclick="abrirEditarTransacao('${id}', ${t.valor}, '${t.categoria}')" class="text-indigo-600 hover:text-indigo-800 p-1 font-semibold text-xs bg-indigo-50 rounded" title="Editar">✏️</button>
+                                <button onclick="excluirTransacao('${id}')" class="text-rose-600 hover:text-rose-800 p-1 font-semibold text-xs bg-rose-50 rounded" title="Excluir">🗑️</button>
+                            </td>
                         </tr>
                     `;
                 });
@@ -739,6 +886,43 @@
                 totalGeralEl.className = `text-xl font-bold ${somaTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
             });
         }
+
+        window.abrirEditarTransacao = function(id, valorAtual, categoriaAtual) {
+            document.getElementById('edit-id-transacao').value = id;
+            document.getElementById('edit-valor').value = valorAtual;
+            document.getElementById('edit-categoria').value = categoriaAtual;
+            document.getElementById('modal-editar-transacao').classList.remove('hidden');
+        };
+
+        const formEditarTransacao = document.getElementById('form-editar-transacao');
+        formEditarTransacao.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-id-transacao').value;
+            const novoValor = parseFloat(document.getElementById('edit-valor').value);
+            const novaCategoria = document.getElementById('edit-categoria').value;
+
+            try {
+                const docRef = doc(db, 'transacoes', id);
+                await updateDoc(docRef, {
+                    valor: novoValor,
+                    categoria: novaCategoria
+                });
+                fecharModalEditarTransacao();
+            } catch (e) {
+                console.error("Erro ao atualizar transação:", e);
+                alert("Erro ao atualizar transação.");
+            }
+        });
+
+        window.excluirTransacao = async function(id) {
+            if (!confirm("Deseja realmente excluir este lançamento?")) return;
+            try {
+                await deleteDoc(doc(db, 'transacoes', id));
+            } catch (e) {
+                console.error("Erro ao excluir transação:", e);
+                alert("Erro ao excluir transação.");
+            }
+        };
     </script>
 </body>
 </html>
