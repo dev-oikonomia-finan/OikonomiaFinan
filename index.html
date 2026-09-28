@@ -3,243 +3,220 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OikonomiaFinan - Controle Financeiro Pessoal e Familiar</title>
-    <!-- Tailwind CSS via CDN -->
+    <title>Oikonomia - Controle Financeiro</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase SDK (Compat) -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 </head>
-<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col justify-between">
+<body class="bg-slate-100 min-h-screen font-sans text-slate-800 flex flex-col justify-between">
 
-    <!-- Tela de Bloqueio / Autenticação (Pop-up de Senha) -->
-    <div id="modal-bloqueio" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 border border-slate-100">
-            <div class="text-center mb-6">
-                <h1 class="text-2xl font-bold text-slate-900">OikonomiaFinan</h1>
-                <p class="text-sm text-slate-500 mt-1">Insira a senha de acesso para gerenciar suas finanças</p>
+    <!-- TELA DE LOGIN COM O GOOGLE (Visível apenas quando deslogado) -->
+    <div id="auth-screen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 space-y-6 text-center">
+            <div>
+                <h1 class="text-2xl font-bold text-indigo-900">💰 Oikonomia</h1>
+                <p class="text-sm text-slate-500 mt-1">Controle financeiro pessoal e familiar</p>
             </div>
-            <form id="form-login" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">E-mail ou Usuário</label>
-                    <input type="email" id="login-email" placeholder="seu@email.com" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm focus:ring-2 focus:ring-indigo-500" required>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1">Senha</label>
-                    <input type="password" id="login-senha" placeholder="••••••••" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm focus:ring-2 focus:ring-indigo-500" required>
-                </div>
-                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 px-4 rounded-xl transition-colors shadow-sm">
-                    Desbloquear Sistema
+
+            <div class="py-4">
+                <button id="btn-login-google" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-sm">
+                    <!-- Ícone do Google -->
+                    <svg class="w-5 h-5" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                    </svg>
+                    Entrar com o Google
                 </button>
-                <p id="erro-login" class="text-xs text-red-500 text-center hidden mt-2">Credenciais inválidas. Tente novamente.</p>
-            </form>
+            </div>
+
+            <div id="auth-error" class="text-rose-600 text-sm hidden"></div>
+
+            <p class="text-xs text-slate-400">
+                Acesso restrito aos administradores autorizados.
+            </p>
         </div>
     </div>
 
-    <!-- Conteúdo Principal do Sistema (Oculto até autenticar) -->
-    <div id="app-content" class="hidden flex-1 flex flex-col">
-        <!-- Header -->
-        <header class="bg-white border-b border-slate-100 shadow-xs">
-            <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
-                <div class="flex items-center space-x-3">
-                    <div class="bg-indigo-600 text-white p-2 rounded-xl font-bold text-lg">O</div>
-                    <div>
-                        <h1 class="font-bold text-slate-800 text-lg">OikonomiaFinan</h1>
-                        <p class="text-xs text-slate-500">Controle Financeiro Pessoal e Familiar</p>
-                    </div>
-                </div>
-                <button id="btn-sair" class="text-xs text-slate-500 hover:text-red-600 font-medium px-3 py-1.5 rounded-lg border border-slate-200 hover:border-red-200 transition-colors">
-                    Sair / Bloquear
-                </button>
+    <!-- APLICAÇÃO PRINCIPAL (Oculta até o usuário logar) -->
+    <div id="app-screen" class="hidden flex flex-col min-h-screen justify-between">
+        <!-- Cabeçalho -->
+        <header class="bg-indigo-600 shadow-md py-4 px-6 text-white flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <h1 class="text-xl font-bold">💰 Oikonomia</h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="user-email-display" class="text-xs bg-indigo-500 px-3 py-1 rounded-full hidden md:inline-block"></span>
+                <button id="btn-logout" class="bg-indigo-700 hover:bg-indigo-800 text-xs px-3 py-1.5 rounded-lg transition">Sair</button>
             </div>
         </header>
 
         <!-- Container Principal -->
-        <main class="max-w-4xl mx-auto px-4 py-6 w-full flex-1">
+        <main class="max-w-4xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6 my-auto">
+            <!-- Coluna Esquerda: Formulário Inteligente -->
+            <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-1">
+                <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Novo Lançamento</h2>
 
-            <!-- Formulário de Lançamento Inteligente -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-6">
-                <h2 class="text-lg font-semibold text-slate-800 mb-4">Novo Lançamento</h2>
+                <form id="transacao-form" class="space-y-4">
+                    <!-- Tipo de Lançamento Geral -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Tipo de Lançamento</label>
+                        <select id="tipo-lancamento" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" required>
+                            <option value="">Selecione...</option>
+                            <option value="PIX">PIX</option>
+                            <option value="Compra">Compra</option>
+                            <option value="Conta">Conta (Recorrente/Fixa)</option>
+                            <option value="Outro">Outro / Avulso</option>
+                        </select>
+                    </div>
 
-                <form id="form-lancamento" class="space-y-4">
-                    <!-- Linha 1: Tipo de Lançamento e Valor -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Valor -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Valor (R$)</label>
+                        <input type="number" step="0.01" id="valor" required placeholder="0,00" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+
+                    <!-- BLOCO DINÂMICO: PIX -->
+                    <div id="bloco-pix" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes do PIX</span>
                         <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Tipo de Lançamento</label>
-                            <select id="tipo-lancamento" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm focus:ring-2 focus:ring-indigo-500" required>
-                                <option value="">Selecione o tipo...</option>
-                                <option value="PIX">PIX</option>
-                                <option value="Compra">Compra</option>
-                                <option value="Conta">Conta (Recorrente/Fixa)</option>
-                                <option value="Outro">Outro</option>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Subtipo</label>
+                            <select id="pix-subtipo" class="w-full border border-slate-300 rounded-lg p-2 text-xs">
+                                <option value="Pagamento">Pagamento (Saída)</option>
+                                <option value="Recebimento">Recebimento (Entrada)</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Valor (R$)</label>
-                            <input type="number" step="0.01" id="valor-lancamento" placeholder="0,00" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm focus:ring-2 focus:ring-indigo-500" required>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Destinatário / Endereçado</label>
+                            <select id="select-destinatario-pix" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoDestinatario(this)">
+                                <option value="">Selecione ou cadastre...</option>
+                                <option value="novo">+ Cadastrar novo destinatário</option>
+                            </select>
+                            <input type="text" id="input-novo-destinatario" placeholder="Nome do destinatário" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-destinatario" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-destinatario" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
                         </div>
                     </div>
 
-                    <!-- Bloco Dinâmico: PIX -->
-                    <div id="bloco-pix" class="hidden space-y-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Detalhes do PIX</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Subtipo</label>
-                                <select id="pix-subtipo" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm">
-                                    <option value="Pagamento">Pagamento (Saída)</option>
-                                    <option value="Recebimento">Recebimento (Entrada)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Destinatário / Endereçado</label>
-                                <select id="select-destinatario-pix" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm mb-2" onchange="tratarSelecaoDestinatario(this)">
-                                    <option value="">Selecione ou cadastre...</option>
-                                    <option value="novo">+ Cadastrar novo destinatário</option>
-                                </select>
-                                <input type="text" id="input-novo-destinatario" placeholder="Nome do destinatário" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm hidden">
-                                <label id="label-salvar-destinatario" class="hidden items-center mt-1 text-xs text-slate-600 cursor-pointer">
-                                    <input type="checkbox" id="check-salvar-destinatario" class="mr-1.5 rounded"> Salvar este destinatário para o futuro
-                                </label>
-                            </div>
+                    <!-- BLOCO DINÂMICO: COMPRA -->
+                    <div id="bloco-compra" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes da Compra</span>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Local / Estabelecimento</label>
+                            <select id="select-local-compra" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoLocal(this)">
+                                <option value="">Selecione o local...</option>
+                                <option value="novo">+ Cadastrar novo local (ex: Angeloni, Havan)</option>
+                            </select>
+                            <input type="text" id="input-novo-local" placeholder="Nome do local" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-local" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-local" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Forma de Pagamento</label>
+                            <select id="select-cartao-compra" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCartao(this)">
+                                <option value="">Selecione o cartão / forma...</option>
+                                <option value="Dinheiro">Dinheiro</option>
+                                <option value="Pix">Pix</option>
+                                <option value="novo">+ Cadastrar novo cartão (Visa, Mastercard, etc.)</option>
+                            </select>
+                            <input type="text" id="input-novo-cartao" placeholder="Ex: Mastercard Black" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-cartao" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-cartao" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
                         </div>
                     </div>
 
-                    <!-- Bloco Dinâmico: Compra -->
-                    <div id="bloco-compra" class="hidden space-y-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Detalhes da Compra</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Local / Estabelecimento</label>
-                                <select id="select-local-compra" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm mb-2" onchange="tratarSelecaoLocal(this)">
-                                    <option value="">Selecione o local...</option>
-                                    <option value="novo">+ Cadastrar novo local (ex: Angeloni, Havan)</option>
-                                </select>
-                                <input type="text" id="input-novo-local" placeholder="Nome do local" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm hidden">
-                                <label id="label-salvar-local" class="hidden items-center mt-1 text-xs text-slate-600 cursor-pointer">
-                                    <input type="checkbox" id="check-salvar-local" class="mr-1.5 rounded"> Salvar este local para o futuro
-                                </label>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Forma de Pagamento</label>
-                                <select id="select-cartao-compra" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm mb-2" onchange="tratarSelecaoCartao(this)">
-                                    <option value="">Selecione o cartão / forma...</option>
-                                    <option value="Dinheiro">Dinheiro</option>
-                                    <option value="Pix">Pix</option>
-                                    <option value="novo">+ Cadastrar novo cartão (Visa, Master, etc.)</option>
-                                </select>
-                                <input type="text" id="input-novo-cartao" placeholder="Ex: Mastercard Black" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm hidden">
-                                <label id="label-salvar-cartao" class="hidden items-center mt-1 text-xs text-slate-600 cursor-pointer">
-                                    <input type="checkbox" id="check-salvar-cartao" class="mr-1.5 rounded"> Salvar este cartão para o futuro
-                                </label>
-                            </div>
+                    <!-- BLOCO DINÂMICO: CONTA -->
+                    <div id="bloco-conta" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes da Conta / Recorrência</span>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Conta / Concessionária</label>
+                            <select id="select-concessionaria" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoConcessionaria(this)">
+                                <option value="">Selecione a conta...</option>
+                                <option value="novo">+ Cadastrar nova conta (Celesc, Claro, Condomínio)</option>
+                            </select>
+                            <input type="text" id="input-nova-concessionaria" placeholder="Ex: Celesc, Claro Residencial" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
+                            <label id="label-salvar-concessionaria" class="hidden items-center text-xs text-slate-600 cursor-pointer">
+                                <input type="checkbox" id="check-salvar-concessionaria" class="mr-1 rounded"> Salvar para o futuro
+                            </label>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1">Banco Pagador</label>
+                            <select id="select-banco-pagador" class="w-full border border-slate-300 rounded-lg p-2 text-xs">
+                                <option value="Banco do Brasil">Banco do Brasil</option>
+                                <option value="Itaú">Itaú</option>
+                                <option value="Nubank">Nubank</option>
+                                <option value="Outro">Outro</option>
+                            </select>
                         </div>
                     </div>
 
-                    <!-- Bloco Dinâmico: Conta (Fixa / Recorrente) -->
-                    <div id="bloco-conta" class="hidden space-y-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Detalhes da Conta / Recorrência</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Conta / Concessionária</label>
-                                <select id="select-concessionaria" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm mb-2" onchange="tratarSelecaoConcessionaria(this)">
-                                    <option value="">Selecione a conta...</option>
-                                    <option value="novo">+ Cadastrar nova conta (Celesc, Claro, Condomínio)</option>
-                                </select>
-                                <input type="text" id="input-nova-concessionaria" placeholder="Ex: Celesc, Claro Residencial" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm hidden">
-                                <label id="label-salvar-concessionaria" class="hidden items-center mt-1 text-xs text-slate-600 cursor-pointer">
-                                    <input type="checkbox" id="check-salvar-concessionaria" class="mr-1.5 rounded"> Salvar esta conta para o futuro
-                                </label>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-slate-700 mb-1">Banco Pagador</label>
-                                <select id="select-banco-pagador" class="w-full rounded-xl border-slate-200 border p-2.5 text-sm">
-                                    <option value="Banco do Brasil">Banco do Brasil</option>
-                                    <option value="Itaú">Itaú</option>
-                                    <option value="Nubank">Nubank</option>
-                                    <option value="Outro">Outro</option>
-                                </select>
-                            </div>
-                        </div>
+                    <!-- Campos Padrão (Categoria e Data) -->
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Categoria Principal</label>
+                        <select id="categoria" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <option value="Alimentação">Alimentação</option>
+                            <option value="Moradia">Moradia</option>
+                            <option value="Transporte">Transporte</option>
+                            <option value="Lazer">Lazer</option>
+                            <option value="Investimentos">Investimentos</option>
+                            <option value="Outros">Outros</option>
+                        </select>
                     </div>
 
-                    <!-- Botão de Envio -->
-                    <div class="pt-2">
-                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 px-4 rounded-xl transition-colors shadow-sm">
-                            Salvar Lançamento
-                        </button>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Data</label>
+                        <input type="date" id="data" required class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
                     </div>
+
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition duration-200 shadow-md">
+                        Salvar Lançamento
+                    </button>
                 </form>
-            </div>
+            </section>
 
-            <!-- Listagem de Lançamentos Recentes -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                <h2 class="text-lg font-semibold text-slate-800 mb-4">Lançamentos Recentes</h2>
-                <div id="lista-lancamentos" class="space-y-3">
-                    <p class="text-sm text-slate-400 text-center py-4">Nenhum lançamento registrado ainda.</p>
+            <!-- Coluna Direita: Histórico -->
+            <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-2 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Histórico de Lançamentos</h2>
+
+                    <div class="overflow-x-auto max-h-[400px]">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
+                                    <th class="p-3">Data</th>
+                                    <th class="p-3">Descrição / Detalhes</th>
+                                    <th class="p-3">Categoria</th>
+                                    <th class="p-3 text-right">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-transacoes" class="divide-y divide-slate-100 text-sm">
+                                <tr>
+                                    <td colspan="4" class="p-4 text-center text-slate-400">Carregando dados...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
+
+                <!-- Rodapé com Resumo -->
+                <div class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center bg-slate-50 p-4 rounded-xl">
+                    <span class="text-sm font-medium text-slate-600">Total Líquido:</span>
+                    <span id="total-geral" class="text-xl font-bold text-slate-800">R$ 0,00</span>
+                </div>
+            </section>
         </main>
 
-        <!-- Footer -->
-        <footer class="bg-white border-t border-slate-100 py-4 text-center text-xs text-slate-400">
-            OikonomiaFinan &copy; 2026 - Todos os direitos reservados.
+        <footer class="text-center py-4 text-xs text-slate-400">
+            Oikonomia - Controle Financeiro Seguro
         </footer>
     </div>
 
-    <!-- Script de Configuração e Lógica -->
+    <!-- Funções Auxiliares Globais de UI (Modos Dinâmicos) -->
     <script>
-        // CONFIGURAÇÃO DO FIREBASE (Insira as credenciais do seu projeto OikonomiaFIN4N)
-        const firebaseConfig = {
-            apiKey: "SUA_API_KEY",
-            authDomain: "seu-projeto.firebaseapp.com",
-            projectId: "OikonomiaFIN4N",
-            storageBucket: "seu-projeto.appspot.com",
-            messagingSenderId: "SEU_MESSAGING_SENDER_ID",
-            appId: "SEU_APP_ID"
-        };
-
-        // Inicializa o Firebase
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-
-        // Controle de Autenticação / Tela de Bloqueio
-        auth.onAuthStateChanged((user) => {
-            const modal = document.getElementById('modal-bloqueio');
-            const content = document.getElementById('app-content');
-            if (user) {
-                modal.classList.add('hidden');
-                content.classList.remove('hidden');
-                carregarCadastrosAuxiliares();
-                carregarLancamentos();
-            } else {
-                modal.classList.remove('hidden');
-                content.classList.add('hidden');
-            }
-        });
-
-        document.getElementById('form-login').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const email = document.getElementById('login-email').value;
-            const senha = document.getElementById('login-senha').value;
-            const erroEl = document.getElementById('erro-login');
-
-            auth.signInWithEmailAndPassword(email, senha)
-                .catch((error) => {
-                    erroEl.classList.remove('hidden');
-                });
-        });
-
-        document.getElementById('btn-sair').addEventListener('click', () => {
-            auth.signOut();
-        });
-
-        // Alternância Dinâmica dos Blocos de Lançamento
-        document.getElementById('tipo-lancamento').addEventListener('change', function() {
+        document.getElementById('tipo-lancamento')?.addEventListener('change', function() {
             const tipo = this.value;
             document.getElementById('bloco-pix').classList.add('hidden');
             document.getElementById('bloco-compra').classList.add('hidden');
@@ -254,165 +231,352 @@
             }
         });
 
-        // Funções para gerenciar campos "Novo / Selecionado"
         function tratarSelecaoDestinatario(select) {
-            const inputNovo = document.getElementById('input-novo-destinatario');
-            const labelSalvar = document.getElementById('label-salvar-destinatario');
+            const input = document.getElementById('input-novo-destinatario');
+            const label = document.getElementById('label-salvar-destinatario');
             if (select.value === 'novo') {
-                inputNovo.classList.remove('hidden');
-                labelSalvar.classList.remove('hidden');
-                inputNovo.required = true;
+                input.classList.remove('hidden');
+                label.classList.remove('hidden');
+                input.required = true;
             } else {
-                inputNovo.classList.add('hidden');
-                labelSalvar.classList.add('hidden');
-                inputNovo.required = false;
-                inputNovo.value = '';
+                input.classList.add('hidden');
+                label.classList.add('hidden');
+                input.required = false;
+                input.value = '';
             }
         }
 
         function tratarSelecaoLocal(select) {
-            const inputNovo = document.getElementById('input-novo-local');
-            const labelSalvar = document.getElementById('label-salvar-local');
+            const input = document.getElementById('input-novo-local');
+            const label = document.getElementById('label-salvar-local');
             if (select.value === 'novo') {
-                inputNovo.classList.remove('hidden');
-                labelSalvar.classList.remove('hidden');
-                inputNovo.required = true;
+                input.classList.remove('hidden');
+                label.classList.remove('hidden');
+                input.required = true;
             } else {
-                inputNovo.classList.add('hidden');
-                labelSalvar.classList.add('hidden');
-                inputNovo.required = false;
-                inputNovo.value = '';
+                input.classList.add('hidden');
+                label.classList.add('hidden');
+                input.required = false;
+                input.value = '';
             }
         }
 
         function tratarSelecaoCartao(select) {
-            const inputNovo = document.getElementById('input-novo-cartao');
-            const labelSalvar = document.getElementById('label-salvar-cartao');
+            const input = document.getElementById('input-novo-cartao');
+            const label = document.getElementById('label-salvar-cartao');
             if (select.value === 'novo') {
-                inputNovo.classList.remove('hidden');
-                labelSalvar.classList.remove('hidden');
-                inputNovo.required = true;
+                input.classList.remove('hidden');
+                label.classList.remove('hidden');
+                input.required = true;
             } else {
-                inputNovo.classList.add('hidden');
-                labelSalvar.classList.add('hidden');
-                inputNovo.required = false;
-                inputNovo.value = '';
+                input.classList.add('hidden');
+                label.classList.add('hidden');
+                input.required = false;
+                input.value = '';
             }
         }
 
         function tratarSelecaoConcessionaria(select) {
-            const inputNovo = document.getElementById('input-nova-concessionaria');
-            const labelSalvar = document.getElementById('label-salvar-concessionaria');
+            const input = document.getElementById('input-nova-concessionaria');
+            const label = document.getElementById('label-salvar-concessionaria');
             if (select.value === 'novo') {
-                inputNovo.classList.remove('hidden');
-                labelSalvar.classList.remove('hidden');
-                inputNovo.required = true;
+                input.classList.remove('hidden');
+                label.classList.remove('hidden');
+                input.required = true;
             } else {
-                inputNovo.classList.add('hidden');
-                labelSalvar.classList.add('hidden');
-                inputNovo.required = false;
-                inputNovo.value = '';
+                input.classList.add('hidden');
+                label.classList.add('hidden');
+                input.required = false;
+                input.value = '';
             }
         }
+    </script>
 
-        // Funções para carregar e salvar dados no Firestore
-        function carregarCadastrosAuxiliares() {
-            // Exemplo de carregamento de listas salvas do Firestore
-            db.collection('cadastros_auxiliares').doc('geral').get().then((doc) => {
-                if (doc.exists) {
-                    const dados = doc.data();
-                    preencherSelect('select-destinatario-pix', dados.destinatarios || []);
-                    preencherSelect('select-local-compra', dados.locais || []);
-                    preencherSelect('select-cartao-compra', dados.cartoes || [], ['Dinheiro', 'Pix']);
-                    preencherSelect('select-concessionaria', dados.concessionarias || []);
-                }
-            }).catch((err) => {
-                console.log("Erro ao carregar auxiliares:", err);
-            });
-        }
+    <!-- Script Modular com Google Auth (Popup) e Integração de Campos Dinâmicos -->
+    <script type="module">
+        import { firebaseConfig } from './oikonomia-fire-config.js';
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import {
+            getAuth,
+            GoogleAuthProvider,
+            signInWithPopup,
+            signOut,
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import {
+            getFirestore,
+            collection,
+            addDoc,
+            doc,
+            getDoc,
+            setDoc,
+            updateDoc,
+            arrayUnion,
+            onSnapshot,
+            query,
+            orderBy,
+            serverTimestamp
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        function preencherSelectextras(elementId, itens, fixos = []) {
-            const select = document.getElementById(elementId);
-            // Mantém as opções iniciais e o "novo"
-            // Implementação simplificada de preenchimento
-        }
+        // Inicializa Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const provider = new GoogleAuthProvider();
 
-        function carregarLancamentos() {
-            db.collection('lancamentos').orderBy('data', 'desc').limit(10).onSnapshot((snapshot) => {
-                const listaEl = document.getElementById('lista-lancamentos');
-                listaEl.innerHTML = '';
-                if (snapshot.empty) {
-                    listaEl.innerHTML = '<p class="text-sm text-slate-400 text-center py-4">Nenhum lançamento registrado ainda.</p>';
+        const authScreen = document.getElementById('auth-screen');
+        const appScreen = document.getElementById('app-screen');
+        const btnLoginGoogle = document.getElementById('btn-login-google');
+        const authError = document.getElementById('auth-error');
+        const btnLogout = document.getElementById('btn-logout');
+        const userEmailDisplay = document.getElementById('user-email-display');
+
+        // Seus e-mails permitidos
+        const EMAILS_PERMITIDOS = [
+            "eleomar.orsi@gmail.com",
+            "juli.orsi@gmail.com",
+            "juli.orsi75@gmail.com",
+        ];
+
+        // Monitor de Estado de Autenticação
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                if (EMAILS_PERMITIDOS.length > 0 && !EMAILS_PERMITIDOS.includes(user.email)) {
+                    authError.innerText = `Acesso negado para o e-mail: ${user.email}`;
+                    authError.classList.remove('hidden');
+                    await signOut(auth);
                     return;
                 }
-                snapshot.forEach((doc) => {
-                    const l = doc.data();
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = "flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100 text-sm";
-                    itemDiv.innerHTML = `
-                        <div>
-                            <span class="font-semibold text-slate-700">${l.tipo}</span>
-                            <span class="text-xs text-slate-500 block">${l.detalhe || ''}</span>
-                        </div>
-                        <span class="font-bold text-slate-800">R$ ${parseFloat(l.valor).toFixed(2)}</span>
-                    `;
-                    listaEl.appendChild(itemDiv);
-                });
-            });
-        }
 
-        // Envio do Formulário de Lançamento
-        document.getElementById('form-lancamento').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const tipo = document.getElementById('tipo-lancamento').value;
-            const valor = parseFloat(document.getElementById('valor-lancamento').value);
-            let detalhe = "";
-
-            if (tipo === 'PIX') {
-                const subtipo = document.getElementById('pix-subtipo').value;
-                let dest = document.getElementById('select-destinatario-pix').value;
-                if (dest === 'novo') {
-                    dest = document.getElementById('input-novo-destinatario').value;
-                    const salvar = document.getElementById('check-salvar-destinatario').checked;
-                    if (salvar && dest) {
-                        // Salvar na coleção auxiliar do Firebase se desejado
-                    }
-                }
-                detalhe = `PIX (${subtipo}) para: ${dest}`;
-            } else if (tipo === 'Compra') {
-                let local = document.getElementById('select-local-compra').value;
-                if (local === 'novo') {
-                    local = document.getElementById('input-novo-local').value;
-                }
-                let cartao = document.getElementById('select-cartao-compra').value;
-                if (cartao === 'novo') {
-                    cartao = document.getElementById('input-novo-cartao').value;
-                }
-                detalhe = `Local: ${local} | Pagto: ${cartao}`;
-            } else if (tipo === 'Conta') {
-                let conta = document.getElementById('select-concessionaria').value;
-                if (conta === 'novo') {
-                    conta = document.getElementById('input-nova-concessionaria').value;
-                }
-                const banco = document.getElementById('select-banco-pagador').value;
-                detalhe = `Conta: ${conta} | Banco: ${banco}`;
+                authError.classList.add('hidden');
+                authScreen.classList.add('hidden');
+                appScreen.classList.remove('hidden');
+                userEmailDisplay.innerText = user.email;
+                carregarListasAuxiliares();
+                carregarDados();
+            } else {
+                authScreen.classList.remove('hidden');
+                appScreen.classList.add('hidden');
             }
+        });
+
+        btnLoginGoogle.addEventListener('click', async () => {
+            authError.classList.add('hidden');
+            authError.innerText = '';
 
             try {
-                await db.collection('lancamentos').add({
-                    tipo,
-                    valor,
-                    detalhe,
-                    data: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                document.getElementById('form-lancamento').reset();
+                await signInWithPopup(auth, provider);
+            } catch (error) {
+                console.error("Erro no login com pop-up:", error.code, error.message);
+                if (error.code !== 'auth/popup-closed-by-user') {
+                    authError.innerText = "Erro ao autenticar com o Google. Tente novamente.";
+                    authError.classList.remove('hidden');
+                }
+            }
+        });
+
+        btnLogout.addEventListener('click', async () => {
+            await signOut(auth);
+        });
+
+        document.getElementById('data').valueAsDate = new Date();
+
+        // Carrega Listas Salvas do Firestore para os Selects
+        async function carregarListasAuxiliares() {
+            try {
+                const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const dados = docSnap.data();
+                    popularSelect('select-destinatario-pix', dados.destinatarios || []);
+                    popularSelect('select-local-compra', dados.locais || []);
+                    popularSelect('select-cartao-compra', dados.cartoes || [], ['Dinheiro', 'Pix']);
+                    popularSelect('select-concessionaria', dados.concessionarias || []);
+                }
+            } catch (e) {
+                console.error("Erro ao carregar listas auxiliares:", e);
+            }
+        }
+
+        function popularSelect(elementId, itens, fixos = []) {
+            const select = document.getElementById(elementId);
+            if (!select) return;
+
+            // Preserva a primeira opção (placeholder) e a última ("+ Cadastrar novo...")
+            const primeiraOpcao = select.options[0];
+            const opcaoNovo = select.querySelector('option[value="novo"]');
+
+            select.innerHTML = '';
+            if (primeiraOpcao) select.appendChild(primeiraOpcao);
+
+            // Adiciona itens fixos iniciais se houver
+            fixos.forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = f;
+                opt.textContent = f;
+                select.appendChild(opt);
+            });
+
+            // Adiciona os itens salvos no banco
+            itens.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item;
+                opt.textContent = item;
+                select.appendChild(opt);
+            });
+
+            if (opcaoNovo) select.appendChild(opcaoNovo);
+        }
+
+        async function salvarItemAuxiliar(campo, valor) {
+            if (!valor) return;
+            const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
+            try {
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    await updateDoc(docRef, {
+                        [campo]: arrayUnion(valor)
+                    });
+                } else {
+                    await setDoc(docRef, {
+                        [campo]: [valor]
+                    });
+                }
+                carregarListasAuxiliares();
+            } catch (e) {
+                console.error("Erro ao salvar item auxiliar:", e);
+            }
+        }
+
+        // Salvar Transação Inteligente
+        const form = document.getElementById('transacao-form');
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const tipoGeral = document.getElementById('tipo-lancamento').value;
+            const valor = parseFloat(document.getElementById('valor').value);
+            const categoria = document.getElementById('categoria').value;
+            const data = document.getElementById('data').value;
+
+            let descricaoFinal = "";
+            let tipoTransacao = "despesa"; // padrão
+
+            if (tipoGeral === 'PIX') {
+                const subtipo = document.getElementById('pix-subtipo').value;
+                let destinatario = document.getElementById('select-destinatario-pix').value;
+
+                if (destinatario === 'novo') {
+                    destinatario = document.getElementById('input-novo-destinatario').value.trim();
+                    if (document.getElementById('check-salvar-destinatario').checked && destinatario) {
+                        await salvarItemAuxiliar('destinatarios', destinatario);
+                    }
+                }
+                descricaoFinal = `PIX (${subtipo}): ${destinatario}`;
+                tipoTransacao = subtipo === 'Recebimento' ? 'receita' : 'despesa';
+
+            } else if (tipoGeral === 'Compra') {
+                let local = document.getElementById('select-local-compra').value;
+                if (local === 'novo') {
+                    local = document.getElementById('input-novo-local').value.trim();
+                    if (document.getElementById('check-salvar-local').checked && local) {
+                        await salvarItemAuxiliar('locais', local);
+                    }
+                }
+
+                let cartao = document.getElementById('select-cartao-compra').value;
+                if (cartao === 'novo') {
+                    cartao = document.getElementById('input-novo-cartao').value.trim();
+                    if (document.getElementById('check-salvar-cartao').checked && cartao) {
+                        await salvarItemAuxiliar('cartoes', cartao);
+                    }
+                }
+                descricaoFinal = `Compra em ${local} (Pgto: ${cartao})`;
+                tipoTransacao = 'despesa';
+
+            } else if (tipoGeral === 'Conta') {
+                let concessionaria = document.getElementById('select-concessionaria').value;
+                if (concessionaria === 'novo') {
+                    concessionaria = document.getElementById('input-nova-concessionaria').value.trim();
+                    if (document.getElementById('check-salvar-concessionaria').checked && concessionaria) {
+                        await salvarItemAuxiliar('concessionarias', concessionaria);
+                    }
+                }
+                const banco = document.getElementById('select-banco-pagador').value;
+                descricaoFinal = `Conta: ${concessionaria} (Banco: ${banco})`;
+                tipoTransacao = 'despesa';
+
+            } else {
+                descricaoFinal = "Outro Lançamento";
+                tipoTransacao = 'despesa';
+            }
+
+            const novaTransacao = {
+                tipo: tipoTransacao,
+                descricao: descricaoFinal,
+                valor: valor,
+                categoria: categoria,
+                data: data,
+                criadoEm: serverTimestamp()
+            };
+
+            try {
+                await addDoc(collection(db, 'transacoes'), novaTransacao);
+                form.reset();
+                document.getElementById('data').valueAsDate = new Date();
                 document.getElementById('bloco-pix').classList.add('hidden');
                 document.getElementById('bloco-compra').classList.add('hidden');
                 document.getElementById('bloco-conta').classList.add('hidden');
-            } catch (err) {
-                alert('Erro ao salvar lançamento: ' + err.message);
+                carregarListasAuxiliares();
+            } catch (error) {
+                console.error("Erro ao salvar transação: ", error);
+                alert("Erro ao salvar transação.");
             }
         });
+
+        // Carregar Dados em Tempo Real
+        function carregarDados() {
+            const listaTransacoesEl = document.getElementById('lista-transacoes');
+            const totalGeralEl = document.getElementById('total-geral');
+
+            const q = query(collection(db, 'transacoes'), orderBy('data', 'desc'));
+
+            onSnapshot(q, (snapshot) => {
+                let html = '';
+                let somaTotal = 0;
+
+                if (snapshot.empty) {
+                    listaTransacoesEl.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">Nenhum lançamento encontrado.</td></tr>`;
+                    totalGeralEl.innerText = "R$ 0,00";
+                    return;
+                }
+
+                snapshot.forEach((doc) => {
+                    const t = doc.data();
+                    const valorFormatado = (t.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                    const corValor = t.tipo === 'receita' ? 'text-emerald-600' : 'text-rose-600';
+                    const sinal = t.tipo === 'receita' ? '+' : '-';
+
+                    if (t.tipo === 'receita') {
+                        somaTotal += t.valor;
+                    } else {
+                        somaTotal -= t.valor;
+                    }
+
+                    html += `
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 text-slate-500">${t.data ? t.data.split('-').reverse().join('/') : '--/--/----'}</td>
+                            <td class="p-3 font-medium">${t.descricao}</td>
+                            <td class="p-3"><span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">${t.categoria}</span></td>
+                            <td class="p-3 text-right font-bold ${corValor}">${sinal} ${valorFormatado}</td>
+                        </tr>
+                    `;
+                });
+
+                listaTransacoesEl.innerHTML = html;
+                totalGeralEl.innerText = somaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                totalGeralEl.className = `text-xl font-bold ${somaTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
+            });
+        }
     </script>
 </body>
 </html>
