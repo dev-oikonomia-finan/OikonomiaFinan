@@ -136,7 +136,7 @@
         </footer>
     </div>
 
-    <!-- Script Modular com Google Auth (Redirect) -->
+    <!-- Script Modular com Google Auth (Redirect Otimizado) -->
     <script type="module">
         import { firebaseConfig } from './oikonomia-fire-config.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -178,31 +178,44 @@
             "email-da-sua-esposa@gmail.com"
         ];
 
-        // Trata o resultado do redirecionamento do Google ao retornar à página
-        getRedirectResult(auth).catch((error) => {
-            console.error("Erro no redirecionamento do login:", error.code, error.message);
-            authError.innerText = "Não foi possível concluir o login. Tente novamente.";
-            authError.classList.remove('hidden');
-        });
+        // Função unificada para validar e liberar o acesso à interface
+        function processarUsuarioLogado(user) {
+            console.log("Processando usuário:", user.email);
 
-        // Monitor de Estado de Autenticação
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                // Valida se o e-mail está na lista permitida
-                if (EMAILS_PERMITIDOS.length > 0 && !EMAILS_PERMITIDOS.includes(user.email)) {
-                    authError.innerText = `Acesso negado para o e-mail: ${user.email}`;
-                    authError.classList.remove('hidden');
-                    await signOut(auth); // Desconecta automaticamente
-                    return;
+            if (EMAILS_PERMITIDOS.length > 0 && !EMAILS_PERMITIDOS.includes(user.email)) {
+                console.warn(`Acesso negado para: ${user.email}`);
+                authError.innerText = `Acesso negado para o e-mail: ${user.email}`;
+                authError.classList.remove('hidden');
+                signOut(auth);
+                return;
+            }
+
+            // Autorizado com sucesso
+            authError.classList.add('hidden');
+            authScreen.classList.add('hidden');
+            appScreen.classList.remove('hidden');
+            userEmailDisplay.innerText = user.email;
+            carregarDados();
+        }
+
+        // 1. Processa o resultado do redirecionamento assim que a página recarrega
+        getRedirectResult(auth)
+            .then((result) => {
+                if (result && result.user) {
+                    processarUsuarioLogado(result.user);
                 }
+            })
+            .catch((error) => {
+                console.error("Erro no getRedirectResult:", error.code, error.message);
+                authError.innerText = "Erro ao autenticar com o Google. Tente novamente.";
+                authError.classList.remove('hidden');
+            });
 
-                // Usuário autorizado: exibe o app
-                authScreen.classList.add('hidden');
-                appScreen.classList.remove('hidden');
-                userEmailDisplay.innerText = user.email;
-                carregarDados();
+        // 2. Mantém o monitor de estado para sessões já ativas
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                processarUsuarioLogado(user);
             } else {
-                // Deslogado: mostra tela de login
                 authScreen.classList.remove('hidden');
                 appScreen.classList.add('hidden');
             }
@@ -213,7 +226,7 @@
             authError.classList.add('hidden');
             authError.innerText = '';
 
-            btnLoginGoogle.innerHTML = `<span class="animate-pulse">Redirecionando para o Google...</span>`;
+            btnLoginGoogle.innerHTML = `<span class="animate-pulse">Redirecionando...</span>`;
             btnLoginGoogle.disabled = true;
 
             try {
