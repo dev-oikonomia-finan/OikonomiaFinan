@@ -136,14 +136,15 @@
         </footer>
     </div>
 
-    <!-- Script Modular com Google Auth -->
+    <!-- Script Modular com Google Auth (Redirect) -->
     <script type="module">
         import { firebaseConfig } from './oikonomia-fire-config.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import {
             getAuth,
             GoogleAuthProvider,
-            signInWithPopup,
+            signInWithRedirect,
+            getRedirectResult,
             signOut,
             onAuthStateChanged
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -170,12 +171,19 @@
         const btnLogout = document.getElementById('btn-logout');
         const userEmailDisplay = document.getElementById('user-email-display');
 
-        // Seus e-mails permitidos (Modifique aqui com o seu e-mail e o da sua esposa)
+        // Seus e-mails permitidos
         const EMAILS_PERMITIDOS = [
             "oikonomia.finan@gmail.com",
             "eleomar.orsi@gmail.com",
             "email-da-sua-esposa@gmail.com"
         ];
+
+        // Trata o resultado do redirecionamento do Google ao retornar à página
+        getRedirectResult(auth).catch((error) => {
+            console.error("Erro no redirecionamento do login:", error.code, error.message);
+            authError.innerText = "Não foi possível concluir o login. Tente novamente.";
+            authError.classList.remove('hidden');
+        });
 
         // Monitor de Estado de Autenticação
         onAuthStateChanged(auth, async (user) => {
@@ -200,44 +208,21 @@
             }
         });
 
-        // Ação de Login com Google com Tratamento de Erros Detalhado
+        // Ação de Login com Google via Redirecionamento
         btnLoginGoogle.addEventListener('click', async () => {
             authError.classList.add('hidden');
             authError.innerText = '';
 
-            const originalText = btnLoginGoogle.innerHTML;
-            btnLoginGoogle.innerHTML = `<span class="animate-pulse">Conectando...</span>`;
+            btnLoginGoogle.innerHTML = `<span class="animate-pulse">Redirecionando para o Google...</span>`;
             btnLoginGoogle.disabled = true;
 
             try {
-                await signInWithPopup(auth, provider);
+                await signInWithRedirect(auth, provider);
             } catch (error) {
-                console.error("Erro no login com Google:", error.code, error.message);
-
-                let mensagemAmigavel = "Não foi possível realizar o login. Tente novamente.";
-
-                switch (error.code) {
-                    case 'auth/popup-closed-by-user':
-                        mensagemAmigavel = "A janela de login foi fechada antes de concluir. Tente novamente.";
-                        break;
-                    case 'auth/popup-blocked':
-                        mensagemAmigavel = "O navegador bloqueou a janela pop-up de login. Permita pop-ups para este site.";
-                        break;
-                    case 'auth/cancelled-popup-request':
-                        mensagemAmigavel = "Muitas solicitações abertas. Feche as outras abas e tente novamente.";
-                        break;
-                    case 'auth/network-request-failed':
-                        mensagemAmigavel = "Erro de conexão. Verifique sua internet e tente novamente.";
-                        break;
-                    case 'auth/unauthorized-domain':
-                        mensagemAmigavel = "Este domínio não está autorizado no painel do Firebase.";
-                        break;
-                }
-
-                authError.innerText = mensagemAmigavel;
+                console.error("Erro ao iniciar redirecionamento:", error);
+                authError.innerText = "Erro ao iniciar o login. Tente novamente.";
                 authError.classList.remove('hidden');
-            } finally {
-                btnLoginGoogle.innerHTML = originalText;
+                btnLoginGoogle.innerHTML = `Entrar com o Google`;
                 btnLoginGoogle.disabled = false;
             }
         });
