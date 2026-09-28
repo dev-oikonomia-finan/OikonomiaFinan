@@ -3,104 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meu Controle Financeiro</title>
+    <title>Oikonomia - Controle Financeiro</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-100 min-h-screen font-sans text-slate-800">
+<body class="bg-slate-100 min-h-screen font-sans text-slate-800 flex flex-col justify-between">
 
-    <!-- Cabeçalho -->
-    <header class="bg-indigo-600 shadow-md py-4 px-6 text-white flex justify-between items-center">
-        <h1 class="text-xl font-bold">💰 Finanças Pessoais & Família</h1>
-        <span class="text-xs bg-indigo-500 px-3 py-1 rounded-full">Modo Online (Firebase)</span>
-    </header>
+    <!-- TELA DE LOGIN (Visível apenas quando deslogado) -->
+    <div id="auth-screen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 space-y-6">
+            <div class="text-center">
+                <h1 class="text-2xl font-bold text-indigo-900">💰 Oikonomia</h1>
+                <p class="text-sm text-slate-500 mt-1">Faça login para acessar suas finanças</p>
+            </div>
 
-    <!-- Container Principal -->
-    <main class="max-w-4xl mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-
-        <!-- Coluna Esquerda: Formulário -->
-        <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-1">
-            <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Novo Lançamento</h2>
-
-            <form id="transacao-form" class="space-y-4">
+            <form id="login-form" class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-slate-600 mb-1">Tipo</label>
-                    <select id="tipo" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <option value="despesa">Despesa 📉</option>
-                        <option value="receita">Receita 📈</option>
-                    </select>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">E-mail</label>
+                    <input type="email5" id="login-email" required placeholder="seu@email.com" class="w-full border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none">
                 </div>
-
                 <div>
-                    <label class="block text-sm font-medium text-slate-600 mb-1">Descrição</label>
-                    <input type="text" id="descricao" required placeholder="Ex: Supermercado, Salário..." class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <label class="block text-sm font-medium text-slate-600 mb-1">Senha</label>
+                    <input type="password" id="login-senha" required placeholder="********" class="w-full border border-slate-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none">
                 </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-slate-600 mb-1">Valor (R$)</label>
-                    <input type="number" step="0.01" id="valor" required placeholder="0.00" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-slate-600 mb-1">Categoria</label>
-                    <select id="categoria" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <option value="Alimentação">Alimentação</option>
-                        <option value="Moradia">Moradia</option>
-                        <option value="Transporte">Transporte</option>
-                        <option value="Lazer">Lazer</option>
-                        <option value="Investimentos">Investimentos</option>
-                        <option value="Outros">Outros</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-slate-600 mb-1">Data</label>
-                    <input type="date" id="data" required class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                </div>
-
                 <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition duration-200 shadow-md">
-                    Salvar Lançamento
+                    Entrar
                 </button>
             </form>
-        </section>
 
-        <!-- Coluna Direita: Histórico -->
-        <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-2 flex flex-col justify-between">
-            <div>
-                <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Histórico de Lançamentos</h2>
+            <div id="auth-error" class="text-rose-600 text-sm text-center hidden"></div>
 
-                <div class="overflow-x-auto max-h-[400px]">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
-                                <th class="p-3">Data</th>
-                                <th class="p-3">Descrição</th>
-                                <th class="p-3">Categoria</th>
-                                <th class="p-3 text-right">Valor</th>
-                            </tr>
-                        </thead>
-                        <tbody id="lista-transacoes" class="divide-y divide-slate-100 text-sm">
-                            <tr>
-                                <td colspan="4" class="p-4 text-center text-slate-400">Carregando dados do Firebase...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+            <p class="text-xs text-center text-slate-400">
+                Nota: Se for seu primeiro acesso, cadastre seu e-mail no painel do Firebase Authentication ou adicione um botão de registro.
+            </p>
+        </div>
+    </div>
+
+    <!-- APLICAÇÃO PRINCIPAL (Oculta até o usuário logar) -->
+    <div id="app-screen" class="hidden flex flex-col min-h-screen justify-between">
+        <!-- Cabeçalho -->
+        <header class="bg-indigo-600 shadow-md py-4 px-6 text-white flex justify-between items-center">
+            <h1 class="text-xl font-bold">💰 Oikonomia - Finanças</h1>
+            <div class="flex items-center gap-4">
+                <span id="user-email-display" class="text-xs bg-indigo-500 px-3 py-1 rounded-full hidden md:inline-block"></span>
+                <button id="btn-logout" class="bg-indigo-700 hover:bg-indigo-800 text-xs px-3 py-1.5 rounded-lg transition">Sair</button>
+            </div>
+        </header>
+
+        <!-- Container Principal -->
+        <main class="max-w-4xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6 my-auto">
+            <!-- Coluna Esquerda: Formulário -->
+            <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-1">
+                <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Novo Lançamento</h2>
+
+                <form id="transacao-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Tipo</label>
+                        <select id="tipo" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <option value="despesa">Despesa 📉</option>
+                            <option value="receita">Receita 📈</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Descrição</label>
+                        <input type="text" id="descricao" required placeholder="Ex: Supermercado..." class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Valor (R$)</label>
+                        <input type="number" step="0.01" id="valor" required placeholder="0.00" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Categoria</label>
+                        <select id="categoria" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <option value="Alimentação">Alimentação</option>
+                            <option value="Moradia">Moradia</option>
+                            <option value="Transporte">Transporte</option>
+                            <option value="Lazer">Lazer</option>
+                            <option value="Investimentos">Investimentos</option>
+                            <option value="Outros">Outros</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Data</label>
+                        <input type="date" id="data" required class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition duration-200 shadow-md">
+                        Salvar Lançamento
+                    </button>
+                </form>
+            </section>
+
+            <!-- Coluna Direita: Histórico -->
+            <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-2 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Histórico de Lançamentos</h2>
+
+                    <div class="overflow-x-auto max-h-[400px]">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
+                                    <th class="p-3">Data</th>
+                                    <th class="p-3">Descrição</th>
+                                    <th class="p-3">Categoria</th>
+                                    <th class="p-3 text-right">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-transacoes" class="divide-y divide-slate-100 text-sm">
+                                <tr>
+                                    <td colspan="4" class="p-4 text-center text-slate-400">Carregando dados...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
 
-            <!-- Rodapé com Resumo -->
-            <div class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center bg-slate-50 p-4 rounded-xl">
-                <span class="text-sm font-medium text-slate-600">Total Registrado:</span>
-                <span id="total-geral" class="text-xl font-bold text-slate-800">R$ 0,00</span>
-            </div>
-        </section>
+                <!-- Rodapé com Resumo -->
+                <div class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center bg-slate-50 p-4 rounded-xl">
+                    <span class="text-sm font-medium text-slate-600">Total Registrado:</span>
+                    <span id="total-geral" class="text-xl font-bold text-slate-800">R$ 0,00</span>
+                </div>
+            </section>
+        </main>
 
-    </main>
+        <footer class="text-center py-4 text-xs text-slate-400">
+            Oikonomia - Controle Financeiro Seguro
+        </footer>
+    </div>
 
-    <!-- Script Modular -->
+    <!-- Script Modular com Autenticação -->
     <script type="module">
         import { firebaseConfig } from './oikonomia-fire-config.js';
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import {
+            getAuth,
+            signInWithEmailAndPassword,
+            signOut,
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import {
             getFirestore,
             collection,
@@ -111,9 +155,55 @@
             serverTimestamp
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        // Inicializa o Firebase
+        // Inicializa Firebase
         const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
         const db = getFirestore(app);
+
+        const authScreen = document.getElementById('auth-screen');
+        const appScreen = document.getElementById('app-screen');
+        const loginForm = document.getElementById('login-form');
+        const authError = document.getElementById('auth-error');
+        const btnLogout = document.getElementById('btn-logout');
+        const userEmailDisplay = document.getElementById('user-email-display');
+
+        // Monitor de Estado de Autenticação
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // Usuário logado: esconde tela de login, mostra o app
+                authScreen.classList.add('hidden');
+                appScreen.classList.remove('hidden');
+                userEmailDisplay.innerText = user.email;
+                carregarDados();
+            } else {
+                // Usuário deslogado: mostra tela de login
+                authScreen.classList.remove('hidden');
+                appScreen.classList.add('hidden');
+            }
+        });
+
+        // Ação de Login
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            authError.classList.add('hidden');
+
+            const email = document.getElementById('login-email').value;
+            const senha = document.getElementById('login-senha').value;
+
+            try {
+                await signInWithEmailAndPassword(auth, email, senha);
+                loginForm.reset();
+            } catch (error) {
+                console.error("Erro no login:", error);
+                authError.innerText = "E-mail ou senha incorretos.";
+                authError.classList.remove('hidden');
+            }
+        });
+
+        // Ação de Logout
+        btnLogout.addEventListener('click', async () => {
+            await signOut(auth);
+        });
 
         // Preenche a data de hoje
         document.getElementById('data').valueAsDate = new Date();
@@ -138,52 +228,54 @@
                 document.getElementById('data').valueAsDate = new Date();
             } catch (error) {
                 console.error("Erro ao salvar transação: ", error);
-                alert("Erro ao salvar. Verifique o console.");
+                alert("Erro ao salvar.");
             }
         });
 
         // Carregar Dados em Tempo Real
-        const listaTransacoesEl = document.getElementById('lista-transacoes');
-        const totalGeralEl = document.getElementById('total-geral');
+        function carregarDados() {
+            const listaTransacoesEl = document.getElementById('lista-transacoes');
+            const totalGeralEl = document.getElementById('total-geral');
 
-        const q = query(collection(db, 'transacoes'), orderBy('data', 'desc'));
+            const q = query(collection(db, 'transacoes'), orderBy('data', 'desc'));
 
-        onSnapshot(q, (snapshot) => {
-            let html = '';
-            let somaTotal = 0;
+            onSnapshot(q, (snapshot) => {
+                let html = '';
+                let somaTotal = 0;
 
-            if (snapshot.empty) {
-                listaTransacoesEl.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">Nenhum lançamento encontrado.</td></tr>`;
-                totalGeralEl.innerText = "R$ 0,00";
-                return;
-            }
-
-            snapshot.forEach((doc) => {
-                const t = doc.data();
-                const valorFormatado = t.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                const corValor = t.tipo === 'receita' ? 'text-emerald-600' : 'text-rose-600';
-                const sinal = t.tipo === 'receita' ? '+' : '-';
-
-                if (t.tipo === 'receita') {
-                    somaTotal += t.valor;
-                } else {
-                    somaTotal -= t.valor;
+                if (snapshot.empty) {
+                    listaTransacoesEl.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400">Nenhum lançamento encontrado.</td></tr>`;
+                    totalGeralEl.innerText = "R$ 0,00";
+                    return;
                 }
 
-                html += `
-                    <tr class="hover:bg-slate-50 transition">
-                        <td class="p-3 text-slate-500">${t.data.split('-').reverse().join('/')}</td>
-                        <td class="p-3 font-medium">${t.descricao}</td>
-                        <td class="p-3"><span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">${t.categoria}</span></td>
-                        <td class="p-3 text-right font-bold ${corValor}">${sinal} ${valorFormatado}</td>
-                    </tr>
-                `;
-            });
+                snapshot.forEach((doc) => {
+                    const t = doc.data();
+                    const valorFormatado = t.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                    const corValor = t.tipo === 'receita' ? 'text-emerald-600' : 'text-rose-600';
+                    const sinal = t.tipo === 'receita' ? '+' : '-';
 
-            listaTransacoesEl.innerHTML = html;
-            totalGeralEl.innerText = somaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            totalGeralEl.className = `text-xl font-bold ${somaTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
-        });
+                    if (t.tipo === 'receita') {
+                        somaTotal += t.valor;
+                    } else {
+                        somaTotal -= t.valor;
+                    }
+
+                    html += `
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 text-slate-500">${t.data.split('-').reverse().join('/')}</td>
+                            <td class="p-3 font-medium">${t.descricao}</td>
+                            <td class="p-3"><span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">${t.categoria}</span></td>
+                            <td class="p-3 text-right font-bold ${corValor}">${sinal} ${valorFormatado}</td>
+                        </tr>
+                    `;
+                });
+
+                listaTransacoesEl.innerHTML = html;
+                totalGeralEl.innerText = somaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                totalGeralEl.className = `text-xl font-bold ${somaTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
+            });
+        }
     </script>
 </body>
 </html>
