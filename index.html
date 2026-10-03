@@ -4,522 +4,351 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oikonomia - Controle Financeiro</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
 </head>
-<body class="bg-slate-100 min-h-screen font-sans text-slate-800 flex flex-col justify-between">
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col justify-between">
 
-    <!-- TELA DE LOGIN COM O GOOGLE -->
-    <div id="auth-screen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 space-y-6 text-center">
-            <div>
-                <h1 class="text-2xl font-bold text-indigo-900">💰 Oikonomia</h1>
-                <p class="text-sm text-slate-500 mt-1">Controle financeiro pessoal e familiar</p>
+    <!-- Container Principal / Autenticação -->
+    <div id="auth-container" class="flex-grow flex items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-100 text-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl mb-4 text-2xl font-bold shadow-inner">
+                O
             </div>
+            <h1 class="text-2xl font-bold text-slate-900 mb-2">Oikonomia</h1>
+            <p class="text-slate-500 text-sm mb-6">Controle Financeiro Pessoal</p>
 
-            <div class="py-4">
-                <button id="btn-login-google" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold py-3 px-4 rounded-xl transition duration-200 shadow-sm">
-                    <svg class="w-5 h-5" viewBox="0 0 24 24">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                    </svg>
-                    Entrar com o Google
-                </button>
-            </div>
-
-            <div id="auth-error" class="text-rose-600 text-sm hidden"></div>
-
-            <p class="text-xs text-slate-400">
-                Acesso restrito aos administradores autorizados.
-            </p>
+            <button id="btn-login-google" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-3 px-4 rounded-xl transition shadow-sm">
+                <svg class="w-5 h-5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                </svg>
+                Entrar com o Google
+            </button>
+            <p id="auth-error" class="text-rose-600 text-xs mt-4 hidden"></p>
         </div>
     </div>
 
-    <!-- APLICAÇÃO PRINCIPAL -->
-    <div id="app-screen" class="hidden flex flex-col min-h-screen justify-between">
-        <!-- Cabeçalho -->
-        <header class="bg-indigo-600 shadow-md py-4 px-6 text-white flex justify-between items-center">
-            <div class="flex items-center gap-3">
-                <h1 class="text-xl font-bold">💰 Oikonomia</h1>
-            </div>
-            <div class="flex items-center gap-4">
-                <span id="user-email-display" class="text-xs bg-indigo-500 px-3 py-1 rounded-full hidden md:inline-block"></span>
-                <button id="btn-logout" class="bg-indigo-700 hover:bg-indigo-800 text-xs px-3 py-1.5 rounded-lg transition">Sair</button>
+    <!-- Conteúdo Principal do App (Oculto até logar) -->
+    <div id="app-container" class="hidden flex-grow flex flex-col">
+        <!-- Header -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+            <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-sm">O</div>
+                    <span class="font-bold text-lg text-slate-800">Oikonomia</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="user-email" class="text-xs text-slate-500 hidden sm:inline"></span>
+                    <button id="btn-logout" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3 py-1.5 rounded-lg transition">Sair</button>
+                </div>
             </div>
         </header>
 
-        <!-- Container Principal -->
-        <main class="max-w-4xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6 my-auto">
-            <!-- Coluna Esquerda: Formulário Inteligente + Gerenciadores -->
-            <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-1 space-y-4">
-                <h2 class="text-lg font-semibold text-indigo-900 border-b pb-2">Novo Lançamento</h2>
+        <!-- Main Body -->
+        <main class="max-w-4xl mx-auto px-4 py-6 w-full flex-grow space-y-6">
+
+            <!-- Resumo Financeiro / Total -->
+            <div class="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl p-6 text-white shadow-lg">
+                <p class="text-indigo-200 text-xs font-medium uppercase tracking-wider">Saldo Geral Atual</p>
+                <h2 id="total-geral" class="text-3xl font-bold mt-1">R$ 0,00</h2>
+            </div>
+
+            <!-- Formulário de Nova Transação -->
+            <section class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                <h3 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <span>➕</span> Novo Lançamento
+                </h3>
 
                 <form id="transacao-form" class="space-y-4">
-                    <!-- Tipo de Lançamento Geral -->
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Tipo de Lançamento</label>
-                        <select id="tipo-lancamento" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" required>
-                            <option value="">Selecione...</option>
-                            <option value="PIX">PIX</option>
-                            <option value="Compra">Compra</option>
-                            <option value="Conta">Conta (Recorrente/Fixa)</option>
-                            <option value="Outro">Outro / Avulso</option>
-                        </select>
-                    </div>
-
-                    <!-- Valor -->
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Valor (R$)</label>
-                        <input type="number" step="0.01" id="valor" required placeholder="0,00" class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-
-                    <!-- BLOCO DINÂMICO: PIX -->
-                    <div id="bloco-pix" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes do PIX</span>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Subtipo</label>
-                            <select id="pix-subtipo" class="w-full border border-slate-300 rounded-lg p-2 text-xs">
-                                <option value="Pagamento">Pagamento (Saída)</option>
-                                <option value="Recebimento">Recebimento (Entrada)</option>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Tipo de Lançamento</label>
+                            <select id="tipo-lancamento" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="PIX">Pix</option>
+                                <option value="Compra" selected>Compra (Cartão/Dinheiro)</option>
+                                <option value="Conta">Conta Fixa / Boleto</option>
+                                <option value="Outro">Outro Lançamento</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Destinatário / Endereçado</label>
-                            <select id="select-destinatario-pix" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoDestinatario(this)">
-                                <option value="">Selecione ou cadastre...</option>
-                                <option value="novo">+ Cadastrar novo destinatário</option>
-                            </select>
-                            <input type="text" id="input-novo-destinatario" placeholder="Nome do destinatário" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
-                            <label id="label-salvar-destinatario" class="hidden items-center text-xs text-slate-600 cursor-pointer">
-                                <input type="checkbox" id="check-salvar-destinatario" class="mr-1 rounded"> Salvar para o futuro
-                            </label>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Valor (R$)</label>
+                            <input type="number" step="0.01" id="valor" required placeholder="0,00" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
-                            <select id="select-categoria-pix" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCategoria('pix', this)">
-                                <option value="">Selecione a categoria...</option>
-                                <option value="novo">+ Cadastrar nova categoria</option>
-                            </select>
-                            <input type="text" id="input-nova-categoria-pix" placeholder="Nome da nova categoria" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
-                            <label id="label-salvar-categoria-pix" class="hidden items-center text-xs text-slate-600 cursor-pointer">
-                                <input type="checkbox" id="check-salvar-categoria-pix" class="mr-1 rounded"> Salvar para o futuro
-                            </label>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Data</label>
+                            <input type="date" id="data" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                         </div>
                     </div>
 
-                    <!-- BLOCO DINÂMICO: COMPRA -->
-                    <div id="bloco-compra" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes da Compra</span>
-                        <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Local / Estabelecimento</label>
-                            <select id="select-local-compra" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoLocal(this)">
-                                <option value="">Selecione o local...</option>
-                                <option value="novo">+ Cadastrar novo local (ex: Posto Zandona, Angeloni)</option>
-                            </select>
-                            <input type="text" id="input-novo-local" placeholder="Nome do local" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
-                            <label id="label-salvar-local" class="hidden items-center text-xs text-slate-600 cursor-pointer">
-                                <input type="checkbox" id="check-salvar-local" class="mr-1 rounded"> Salvar para o futuro
-                            </label>
+                    <!-- Campos dinâmicos: PIX -->
+                    <div id="bloco-pix" class="hidden space-y-3 pt-2 border-t border-slate-100">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Subtipo</label>
+                                <select id="pix-subtipo" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                    <option value="Envio">Pix Enviado (Despesa)</option>
+                                    <option value="Recebimento">Pix Recebido (Receita)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <label class="block text-xs font-semibold text-slate-600">Destinatário</label>
+                                    <button type="button" onclick="abrirModalGerenciador('destinatarios')" class="text-xs text-indigo-600 hover:underline">Gerenciar</button>
+                                </div>
+                                <select id="select-destinatario-pix" onchange="verificarNovoCampo(this, 'container-novo-destinatario')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                    <option value="">Selecione...</option>
+                                    <option value="novo">+ Cadastrar Novo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="container-novo-destinatario" class="hidden flex gap-2">
+                            <input type="text" id="input-novo-destinatario" placeholder="Nome do novo destinatário" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-destinatario" checked> Salvar na lista</label>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Forma de Pagamento</label>
-                            <select id="select-cartao-compra" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCartao(this)">
-                                <option value="">Selecione o cartão / forma...</option>
-                                <option value="Dinheiro">Dinheiro</option>
-                                <option value="Pix">Pix</option>
-                                <option value="novo">+ Cadastrar novo cartão (Visa, Mastercard, etc.)</option>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
+                            <select id="select-categoria-pix" onchange="verificarNovoCampo(this, 'container-nova-categoria-pix')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                <option value="novo">+ Cadastrar Nova</option>
                             </select>
-                            <input type="text" id="input-novo-cartao" placeholder="Ex: Mastercard Black" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
-                            <label id="label-salvar-cartao" class="hidden items-center text-xs text-slate-600 cursor-pointer">
-                                <input type="checkbox" id="check-salvar-cartao" class="mr-1 rounded"> Salvar para o futuro
-                            </label>
                         </div>
-                        <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
-                            <select id="select-categoria-compra" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCategoria('compra', this)">
-                                <option value="">Selecione a categoria...</option>
-                                <option value="novo">+ Cadastrar nova categoria</option>
-                            </select>
-                            <input type="text" id="input-nova-categoria-compra" placeholder="Nome da nova categoria" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
-                            <label id="label-salvar-categoria-compra" class="hidden items-center text-xs text-slate-600 cursor-pointer">
-                                <input type="checkbox" id="check-salvar-categoria-compra" class="mr-1 rounded"> Salvar para o futuro
-                            </label>
+                        <div id="container-nova-categoria-pix" class="hidden flex gap-2">
+                            <input type="text" id="input-nova-categoria-pix" placeholder="Nome da nova categoria" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-categoria-pix" checked> Salvar na lista</label>
                         </div>
                     </div>
 
-                    <!-- BLOCO DINÂMICO: CONTA -->
-                    <div id="bloco-conta" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes da Conta / Recorrência</span>
-                        <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Conta / Concessionária</label>
-                            <select id="select-concessionaria" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoConcessionaria(this)">
-                                <option value="">Selecione a conta...</option>
-                                <option value="novo">+ Cadastrar nova conta (Celesc, Claro, Condomínio)</option>
-                            </select>
-                            <input type="text" id="input-nova-concessionaria" placeholder="Ex: Celesc, Claro Residencial" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
-                            <label id="label-salvar-concessionaria" class="hidden items-center text-xs text-slate-600 cursor-pointer">
-                                <input type="checkbox" id="check-salvar-concessionaria" class="mr-1 rounded"> Salvar para o futuro
-                            </label>
+                    <!-- Campos dinâmicos: COMPRA -->
+                    <div id="bloco-compra" class="space-y-3 pt-2 border-t border-slate-100">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <label class="block text-xs font-semibold text-slate-600">Local / Estabelecimento</label>
+                                    <button type="button" onclick="abrirModalGerenciador('locais')" class="text-xs text-indigo-600 hover:underline">Gerenciar</button>
+                                </div>
+                                <select id="select-local-compra" onchange="verificarNovoCampo(this, 'container-novo-local')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                    <option value="">Selecione...</option>
+                                    <option value="novo">+ Cadastrar Novo</option>
+                                </select>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <label class="block text-xs font-semibold text-slate-600">Forma de Pagamento / Cartão</label>
+                                    <button type="button" onclick="abrirModalGerenciador('cartoes')" class="text-xs text-indigo-600 hover:underline">Gerenciar</button>
+                                </div>
+                                <select id="select-cartao-compra" onchange="verificarNovoCampo(this, 'container-novo-cartao')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                    <option value="">Selecione...</option>
+                                    <option value="novo">+ Cadastrar Novo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="container-novo-local" class="hidden flex gap-2">
+                            <input type="text" id="input-novo-local" placeholder="Nome do novo local" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-local" checked> Salvar</label>
+                        </div>
+                        <div id="container-novo-cartao" class="hidden flex gap-2">
+                            <input type="text" id="input-novo-cartao" placeholder="Nome do novo cartão/forma" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-cartao" checked> Salvar</label>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Banco Pagador</label>
-                            <select id="select-banco-pagador" class="w-full border border-slate-300 rounded-lg p-2 text-xs">
-                                <option value="Banco do Brasil">Banco do Brasil</option>
-                                <option value="Itaú">Itaú</option>
-                                <option value="Nubank">Nubank</option>
-                                <option value="Outro">Outro</option>
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="block text-xs font-semibold text-slate-600">Categoria</label>
+                                <button type="button" onclick="abrirModalGerenciador('categorias')" class="text-xs text-indigo-600 hover:underline">Gerenciar</button>
+                            </div>
+                            <select id="select-categoria-compra" onchange="verificarNovoCampo(this, 'container-nova-categoria-compra')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                <option value="novo">+ Cadastrar Nova</option>
                             </select>
                         </div>
-                        <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
-                            <select id="select-categoria-conta" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCategoria('conta', this)">
-                                <option value="">Selecione a categoria...</option>
-                                <option value="novo">+ Cadastrar nova categoria</option>
-                            </select>
-                            <input type="text" id="input-nova-categoria-conta" placeholder="Nome da nova categoria" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
-                            <label id="label-salvar-categoria-conta" class="hidden items-center text-xs text-slate-600 cursor-pointer">
-                                <input type="checkbox" id="check-salvar-categoria-conta" class="mr-1 rounded"> Salvar para o futuro
-                            </label>
+                        <div id="container-nova-categoria-compra" class="hidden flex gap-2">
+                            <input type="text" id="input-nova-categoria-compra" placeholder="Nome da nova categoria" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-categoria-compra" checked> Salvar</label>
                         </div>
                     </div>
 
-                    <!-- BLOCO DINÂMICO: OUTRO / AVULSO -->
-                    <div id="bloco-outro" class="hidden space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Detalhes do Lançamento Avulso</span>
-                        <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Descrição / Observação</label>
-                            <input type="text" id="input-outro-descricao" placeholder="Ex: Ajuste de caixa, Venda de item" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1">
+                    <!-- Campos dinâmicos: CONTA -->
+                    <div id="bloco-conta" class="hidden space-y-3 pt-2 border-t border-slate-100">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Concessionária / Conta</label>
+                                <select id="select-concessionaria" onchange="verificarNovoCampo(this, 'container-nova-concessionaria')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                    <option value="">Selecione...</option>
+                                    <option value="novo">+ Cadastrar Nova</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Banco Pagador</label>
+                                <select id="select-banco-pagador" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                    <option value="Nubank">Nubank</option>
+                                    <option value="Itaú">Itaú</option>
+                                    <option value="Bradesco">Bradesco</option>
+                                    <option value="Banco do Brasil">Banco do Brasil</option>
+                                    <option value="Santander">Santander</option>
+                                    <option value="Outro">Outro</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="container-nova-concessionaria" class="hidden flex gap-2">
+                            <input type="text" id="input-nova-concessionaria" placeholder="Nome da concessionária/conta" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-concessionaria" checked> Salvar</label>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
-                            <select id="select-categoria-outro" class="w-full border border-slate-300 rounded-lg p-2 text-xs mb-1" onchange="tratarSelecaoCategoria('outro', this)">
-                                <option value="">Selecione a categoria...</option>
-                                <option value="novo">+ Cadastrar nova categoria</option>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
+                            <select id="select-categoria-conta" onchange="verificarNovoCampo(this, 'container-nova-categoria-conta')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                <option value="novo">+ Cadastrar Nova</option>
                             </select>
-                            <input type="text" id="input-nova-categoria-outro" placeholder="Nome da nova categoria" class="w-full border border-slate-300 rounded-lg p-2 text-xs hidden mb-1">
-                            <label id="label-salvar-categoria-outro" class="hidden items-center text-xs text-slate-600 cursor-pointer">
-                                <input type="checkbox" id="check-salvar-categoria-outro" class="mr-1 rounded"> Salvar para o futuro
-                            </label>
+                        </div>
+                        <div id="container-nova-categoria-conta" class="hidden flex gap-2">
+                            <input type="text" id="input-nova-categoria-conta" placeholder="Nome da nova categoria" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-categoria-conta" checked> Salvar</label>
                         </div>
                     </div>
 
-                    <!-- Data -->
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Data</label>
-                        <input type="date" id="data" required class="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <!-- Campos dinâmicos: OUTRO -->
+                    <div id="bloco-outro" class="hidden space-y-3 pt-2 border-t border-slate-100">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Descrição / Observação</label>
+                            <input type="text" id="input-outro-descricao" placeholder="Ex: Doação, Venda de item usado..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
+                            <select id="select-categoria-outro" onchange="verificarNovoCampo(this, 'container-nova-categoria-outro')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                <option value="novo">+ Cadastrar Nova</option>
+                            </select>
+                        </div>
+                        <div id="container-nova-categoria-outro" class="hidden flex gap-2">
+                            <input type="text" id="input-nova-categoria-outro" placeholder="Nome da nova categoria" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-categoria-outro" checked> Salvar</label>
+                        </div>
                     </div>
 
-                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition duration-200 shadow-md">
-                        Salvar Lançamento
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-xl transition text-sm shadow-sm">
+                        Adicionar Lançamento
                     </button>
                 </form>
-
-                <!-- Atalhos de Gestão de Cadastros -->
-                <div class="pt-4 border-t border-slate-100 space-y-2">
-                    <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block">Gerenciar Cadastros</span>
-                    <div class="grid grid-cols-3 gap-2">
-                        <button onclick="abrirModalGerenciador('locais')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs py-2 px-1 rounded-lg font-medium transition">Locais</button>
-                        <button onclick="abrirModalGerenciador('cartoes')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs py-2 px-1 rounded-lg font-medium transition">Pagamentos</button>
-                        <button onclick="abrirModalGerenciador('categorias')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs py-2 px-1 rounded-lg font-medium transition">Categorias</button>
-                    </div>
-                </div>
             </section>
 
-            <!-- Coluna Direita: Histórico -->
-            <section class="bg-white p-5 rounded-2xl shadow-sm md:col-span-2 flex flex-col justify-between">
-                <div>
-                    <h2 class="text-lg font-semibold mb-4 text-indigo-900 border-b pb-2">Histórico de Lançamentos</h2>
-
-                    <div class="overflow-x-auto max-h-[400px]">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b">
-                                    <th class="p-3">Data</th>
-                                    <th class="p-3">Descrição / Detalhes</th>
-                                    <th class="p-3">Categoria</th>
-                                    <th class="p-3 text-right">Valor</th>
-                                    <th class="p-3 text-center">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody id="lista-transacoes" class="divide-y divide-slate-100 text-sm">
-                                <tr>
-                                    <td colspan="5" class="p-4 text-center text-slate-400">Carregando dados...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Rodapé com Resumo -->
-                <div class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center bg-slate-50 p-4 rounded-xl">
-                    <span class="text-sm font-medium text-slate-600">Total Líquido:</span>
-                    <span id="total-geral" class="text-xl font-bold text-slate-800">R$ 0,00</span>
+            <!-- Histórico de Transações -->
+            <section class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                <h3 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <span>📋</span> Histórico de Lançamentos
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-100 text-xs text-slate-400 uppercase">
+                                <th class="p-3 font-semibold">Data</th>
+                                <th class="p-3 font-semibold">Descrição</th>
+                                <th class="p-3 font-semibold">Categoria</th>
+                                <th class="p-3 font-semibold text-right">Valor</th>
+                                <th class="p-3 font-semibold text-center">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lista-transacoes" class="divide-y divide-slate-50 text-sm">
+                            <!-- Inserido via JS -->
+                        </tbody>
+                    </table>
                 </div>
             </section>
         </main>
-
-        <footer class="text-center py-4 text-xs text-slate-400">
-            Oikonomia - Controle Financeiro Seguro
-        </footer>
     </div>
 
-    <!-- MODAL DE EDIÇÃO DE LANÇAMENTO -->
-    <div id="modal-editar-transacao" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
-        <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
-            <h3 class="text-lg font-bold text-indigo-900 border-b pb-2">Editar Lançamento</h3>
-            <form id="form-editar-transacao" class="space-y-3">
+    <!-- Modal Gerenciador de Listas -->
+    <div id="modal-gerenciador" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-100">
+            <h3 id="titulo-gerenciador" class="text-lg font-bold text-slate-800 mb-4">Gerenciar Itens</h3>
+            <div id="lista-gerenciador-itens" class="max-h-60 overflow-y-auto divide-y divide-slate-100 mb-4 pr-1">
+                <!-- Itens listados via JS -->
+            </div>
+            <div class="flex justify-end">
+                <button onclick="document.getElementById('modal-gerenciador').classList.add('hidden')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm transition">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Transação -->
+    <div id="modal-editar-transacao" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-100">
+            <h3 class="text-lg font-bold text-slate-800 mb-4">Editar Lançamento</h3>
+            <form id="form-editar-transacao" class="space-y-4">
                 <input type="hidden" id="edit-id-transacao">
-
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Descrição / Detalhes</label>
-                    <input type="text" id="edit-descricao" required class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Descrição</label>
+                    <input type="text" id="edit-descricao" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
-
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Valor (R$)</label>
-                    <input type="number" step="0.01" id="edit-valor" required class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Valor (R$)</label>
+                    <input type="number" step="0.01" id="edit-valor" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
-
-                <!-- Campos específicos para edição de Compra (Local e Pagamento) -->
-                <div id="edit-bloco-compra" class="space-y-3 hidden">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 mb-1">Local / Estabelecimento</label>
-                        <select id="edit-local" class="w-full border border-slate-300 rounded-lg p-2 text-xs">
-                            <!-- Preenchido via JS -->
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 mb-1">Forma de Pagamento</label>
-                        <select id="edit-cartao" class="w-full border border-slate-300 rounded-lg p-2 text-xs">
-                            <!-- Preenchido via JS -->
-                        </select>
-                    </div>
-                </div>
-
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 mb-1">Categoria</label>
-                    <select id="edit-categoria" required class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <!-- Preenchido dinamicamente -->
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
+                    <select id="edit-categoria" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <!-- Preenchido via JS -->
                     </select>
                 </div>
-
-                <div class="flex gap-2 pt-2">
-                    <button type="button" onclick="fecharModalEditarTransacao()" class="w-1/2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-2 rounded-xl text-sm transition">Cancelar</button>
-                    <button type="submit" class="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-xl text-sm transition">Salvar</button>
+                <div id="edit-bloco-compra" class="hidden space-y-3 pt-2 border-t border-slate-100">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Local / Estabelecimento</label>
+                        <select id="edit-local" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <!-- Preenchido via JS -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Forma de Pagamento / Cartão</label>
+                        <select id="edit-cartao" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <!-- Preenchido via JS -->
+                        </select>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="fecharModalEditarTransacao()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm transition">Cancelar</button>
+                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition">Salvar Alterações</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- MODAL DE GERENCIAMENTO DE CADASTROS -->
-    <div id="modal-gerenciador" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden">
-        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <div class="flex justify-between items-center border-b pb-2">
-                <h3 id="titulo-gerenciador" class="text-lg font-bold text-indigo-900">Gerenciar Cadastros</h3>
-                <button onclick="fecharModalGerenciador()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
-            </div>
-            <div class="max-h-64 overflow-y-auto divide-y divide-slate-100" id="lista-gerenciador-itens">
-                <!-- Itens carregados via JS -->
-            </div>
-        </div>
-    </div>
-
-    <!-- Funções Auxiliares Globais de UI -->
-    <script>
-        let mapaLocalCategoria = {};
-        let dadosGlobaisAuxiliares = {};
-
-        document.getElementById('tipo-lancamento')?.addEventListener('change', function() {
-            const tipo = this.value;
-
-            document.getElementById('bloco-pix').classList.add('hidden');
-            document.getElementById('input-novo-destinatario').required = false;
-            document.getElementById('select-categoria-pix').required = false;
-
-            document.getElementById('bloco-compra').classList.add('hidden');
-            document.getElementById('input-novo-local').required = false;
-            document.getElementById('input-novo-cartao').required = false;
-            document.getElementById('select-categoria-compra').required = false;
-
-            document.getElementById('bloco-conta').classList.add('hidden');
-            document.getElementById('input-nova-concessionaria').required = false;
-            document.getElementById('select-categoria-conta').required = false;
-
-            document.getElementById('bloco-outro').classList.add('hidden');
-            document.getElementById('select-categoria-outro').required = false;
-
-            if (tipo === 'PIX') {
-                document.getElementById('bloco-pix').classList.remove('hidden');
-                document.getElementById('select-categoria-pix').required = true;
-            } else if (tipo === 'Compra') {
-                document.getElementById('bloco-compra').classList.remove('hidden');
-                document.getElementById('select-categoria-compra').required = true;
-            } else if (tipo === 'Conta') {
-                document.getElementById('bloco-conta').classList.remove('hidden');
-                document.getElementById('select-categoria-conta').required = true;
-            } else if (tipo === 'Outro') {
-                document.getElementById('bloco-outro').classList.remove('hidden');
-                document.getElementById('select-categoria-outro').required = true;
-            }
-        });
-
-        function tratarSelecaoDestinatario(select) {
-            const input = document.getElementById('input-novo-destinatario');
-            const label = document.getElementById('label-salvar-destinatario');
-            if (select.value === 'novo') {
-                input.classList.remove('hidden');
-                label.classList.remove('hidden');
-                input.required = true;
-            } else {
-                input.classList.add('hidden');
-                label.classList.add('hidden');
-                input.required = false;
-                input.value = '';
-            }
-        }
-
-        function tratarSelecaoLocal(select) {
-            const input = document.getElementById('input-novo-local');
-            const label = document.getElementById('label-salvar-local');
-            const selectCategoria = document.getElementById('select-categoria-compra');
-
-            if (select.value === 'novo') {
-                input.classList.remove('hidden');
-                label.classList.remove('hidden');
-                input.required = true;
-                selectCategoria.value = "";
-            } else {
-                input.classList.add('hidden');
-                label.classList.add('hidden');
-                input.required = false;
-                input.value = '';
-
-                const localSelecionado = select.value;
-                if (mapaLocalCategoria && mapaLocalCategoria[localSelecionado]) {
-                    selectCategoria.value = mapaLocalCategoria[localSelecionado];
-                }
-            }
-        }
-
-        function tratarSelecaoCartao(select) {
-            const input = document.getElementById('input-novo-cartao');
-            const label = document.getElementById('label-salvar-cartao');
-            if (select.value === 'novo') {
-                input.classList.remove('hidden');
-                label.classList.remove('hidden');
-                input.required = true;
-            } else {
-                input.classList.add('hidden');
-                label.classList.add('hidden');
-                input.required = false;
-                input.value = '';
-            }
-        }
-
-        function tratarSelecaoConcessionaria(select) {
-            const input = document.getElementById('input-nova-concessionaria');
-            const label = document.getElementById('label-salvar-concessionaria');
-            if (select.value === 'novo') {
-                input.classList.remove('hidden');
-                label.classList.remove('hidden');
-                input.required = true;
-            } else {
-                input.classList.add('hidden');
-                label.classList.add('hidden');
-                input.required = false;
-                input.value = '';
-            }
-        }
-
-        function tratarSelecaoCategoria(tipoBloco, select) {
-            const input = document.getElementById(`input-nova-categoria-${tipoBloco}`);
-            const label = document.getElementById(`label-salvar-categoria-${tipoBloco}`);
-            if (select.value === 'novo') {
-                input.classList.remove('hidden');
-                label.classList.remove('hidden');
-                input.required = true;
-            } else {
-                input.classList.add('hidden');
-                label.classList.add('hidden');
-                input.required = false;
-                input.value = '';
-            }
-        }
-
-        function fecharModalEditarTransacao() {
-            document.getElementById('modal-editar-transacao').classList.add('hidden');
-        }
-
-        function fecharModalGerenciador() {
-            document.getElementById('modal-gerenciador').classList.add('hidden');
-        }
-    </script>
-
-    <!-- Script Modular com Google Auth e Integração Firestore -->
+    <!-- Scripts do Firebase e Lógica -->
     <script type="module">
-        import { firebaseConfig } from './oikonomia-fire-config.js';
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import {
-            getAuth,
-            GoogleAuthProvider,
-            signInWithPopup,
-            signOut,
-            onAuthStateChanged
-        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import {
-            getFirestore,
-            collection,
-            addDoc,
-            doc,
-            getDoc,
-            setDoc,
-            updateDoc,
-            deleteDoc,
-            arrayUnion,
-            onSnapshot,
-            query,
-            orderBy,
-            serverTimestamp
-        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc, query, orderBy, onSnapshot, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        import { firebaseConfig } from "./oikonomia-fire-config.js";
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
         const provider = new GoogleAuthProvider();
 
-        const authScreen = document.getElementById('auth-screen');
-        const appScreen = document.getElementById('app-screen');
+        const authContainer = document.getElementById('auth-container');
+        const appContainer = document.getElementById('app-container');
         const btnLoginGoogle = document.getElementById('btn-login-google');
-        const authError = document.getElementById('auth-error');
         const btnLogout = document.getElementById('btn-logout');
-        const userEmailDisplay = document.getElementById('user-email-display');
+        const authError = document.getElementById('auth-error');
+        const userEmailSpan = document.getElementById('user-email');
 
-        const EMAILS_PERMITIDOS = [
-            "eleomar.orsi@gmail.com",
-            "juli.orsi@gmail.com",
-            "juli.orsi75@gmail.com",
-        ];
+        let dadosGlobaisAuxiliares = {};
+        let mapaLocalCategoria = {};
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
-                if (EMAILS_PERMITIDOS.length > 0 && !EMAILS_PERMITIDOS.includes(user.email)) {
-                    authError.innerText = `Acesso negado para o e-mail: ${user.email}`;
-                    authError.classList.remove('hidden');
-                    await signOut(auth);
-                    return;
-                }
+                // Usuário autenticado com sucesso
+                authContainer.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                userEmailSpan.innerText = user.email;
 
-                authError.classList.add('hidden');
-                authScreen.classList.add('hidden');
-                appScreen.classList.remove('hidden');
-                userEmailDisplay.innerText = user.email;
                 await carregarListasAuxiliares();
                 carregarDados();
             } else {
-                authScreen.classList.remove('hidden');
-                appScreen.classList.add('hidden');
+                // Não autenticado
+                authContainer.classList.remove('hidden');
+                appContainer.classList.add('hidden');
+                userEmailSpan.innerText = '';
             }
         });
 
@@ -563,7 +392,6 @@
                 popularSelect('select-cartao-compra', dados.cartoes || [], ['Dinheiro', 'Pix']);
                 popularSelect('select-concessionaria', dados.concessionarias || []);
 
-                // Preenchimento dos selects de edição
                 popularSelect('edit-local', dados.locais || []);
                 popularSelect('edit-cartao', dados.cartoes || [], ['Dinheiro', 'Pix']);
 
@@ -583,6 +411,24 @@
                 popularSelect('edit-categoria', CATEGORIAS_PADRAO);
             }
         }
+
+        window.verificarNovoCampo = function(selectEl, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            if (selectEl.value === 'novo') {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+
+            if (selectEl.id === 'select-local-compra' && selectEl.value && selectEl.value !== 'novo') {
+                const categoriaSugerida = mapaLocalCategoria[selectEl.value];
+                if (categoriaSugerida) {
+                    const selCat = document.getElementById('select-categoria-compra');
+                    if (selCat) selCat.value = categoriaSugerida;
+                }
+            }
+        };
 
         function popularSelect(elementId, itens, fixos = []) {
             const select = document.getElementById(elementId);
@@ -653,7 +499,6 @@
             }
         }
 
-        // Expor gerenciamento para o escopo global
         window.abrirModalGerenciador = function(tipo) {
             const modal = document.getElementById('modal-gerenciador');
             const titulo = document.getElementById('titulo-gerenciador');
@@ -739,6 +584,20 @@
                 alert("Erro ao excluir.");
             }
         };
+
+        // Troca dinâmica dos blocos de formulário conforme o tipo geral
+        const selectTipoLancamento = document.getElementById('tipo-lancamento');
+        selectTipoLancamento.addEventListener('change', (e) => {
+            const val = e.target.value;
+            ['bloco-pix', 'bloco-compra', 'bloco-conta', 'bloco-outro'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+
+            if (val === 'PIX') document.getElementById('bloco-pix').classList.remove('hidden');
+            if (val === 'Compra') document.getElementById('bloco-compra').classList.remove('hidden');
+            if (val === 'Conta') document.getElementById('bloco-conta').classList.remove('hidden');
+            if (val === 'Outro') document.getElementById('bloco-outro').classList.remove('hidden');
+        });
 
         // Salvar Transação Inteligente
         const form = document.getElementById('transacao-form');
@@ -855,9 +714,11 @@
                 form.reset();
                 document.getElementById('data').valueAsDate = new Date();
 
-                ['bloco-pix', 'bloco-compra', 'bloco-conta', 'bloco-outro'].forEach(id => {
+                ['bloco-pix', 'bloco-conta', 'bloco-outro'].forEach(id => {
                     document.getElementById(id).classList.add('hidden');
                 });
+                document.getElementById('bloco-compra').classList.remove('hidden');
+                document.getElementById('tipo-lancamento').value = 'Compra';
 
                 await carregarListasAuxiliares();
             } catch (error) {
@@ -895,7 +756,6 @@
                         somaTotal -= t.valor;
                     }
 
-                    // Prepara string segura para passar no onclick
                     const tDataJson = encodeURIComponent(JSON.stringify(t));
 
                     html += `
@@ -914,7 +774,7 @@
 
                 listaTransacoesEl.innerHTML = html;
                 totalGeralEl.innerText = somaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                totalGeralEl.className = `text-xl font-bold ${somaTotal >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
+                totalGeralEl.className = `text-3xl font-bold mt-1 ${somaTotal >= 0 ? 'text-white' : 'text-rose-200'}`;
             });
         }
 
@@ -927,11 +787,8 @@
 
             const blocoCompraEdit = document.getElementById('edit-bloco-compra');
 
-            // Verifica se a descrição indica que é uma Compra (padrão gerado: "Compra em [Local] (Pgto: [Cartao])")
             if (t.descricao && t.descricao.startsWith('Compra em ')) {
                 blocoCompraEdit.classList.remove('hidden');
-
-                // Tenta extrair o local e a forma de pagamento da string de descrição para preencher os selects
                 try {
                     const partes = t.descricao.replace('Compra em ', '').split(' (Pgto: ');
                     const localExtraido = partes[0];
@@ -947,6 +804,10 @@
             }
 
             document.getElementById('modal-editar-transacao').classList.remove('hidden');
+        };
+
+        window.fecharModalEditarTransacao = function() {
+            document.getElementById('modal-editar-transacao').classList.add('hidden');
         };
 
         const formEditarTransacao = document.getElementById('form-editar-transacao');
