@@ -1,0 +1,8 @@
+{
+  "name": "Oikonomia-Finan",
+  "short_name": "Oikonomia",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#111415",
+  "theme_color": "#0f766e"
+}

@@ -1,855 +1,159 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oikonomia - Controle Financeiro</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="manifest.json">
+<title>Oikonomia-Finan</title>
+<style>
+:root{--bg:#f6f7f8;--card:#fff;--tx:#1a1d1f;--mu:#6b7378;--ac:#0f766e;--red:#b42318;--grn:#067647;--bd:#e3e6e8}
+@media(prefers-color-scheme:dark){:root{--bg:#111415;--card:#1b1f21;--tx:#eceff0;--mu:#99a2a7;--ac:#2dd4bf;--red:#f97066;--grn:#47cd89;--bd:#2c3236}}
+*{box-sizing:border-box}
+body{margin:0;font:16px system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:env(safe-area-inset-top) 0 80px}
+h1{font-size:1.2rem;margin:0;padding:14px 16px}
+main,.wrap{max-width:560px;margin:0 auto;padding:0 12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:.8rem;color:var(--mu);margin-top:10px}
+input,select{width:100%;font:inherit;padding:11px;margin-top:4px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx)}
+button{font:inherit;border:1px solid var(--bd);border-radius:10px;padding:11px 14px;background:var(--card);color:var(--tx)}
+.pri{width:100%;margin-top:14px;background:var(--ac);color:#fff;border:0;font-weight:600}
+.seg{display:flex;gap:8px}.seg button{flex:1}.seg .on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--bd)}
+.row:last-child{border:0}.mu{color:var(--mu);font-size:.85rem}.neg{color:var(--red)}.pos{color:var(--grn)}
+.x{padding:2px 8px;margin-left:6px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 0;color:var(--mu)}nav .on{color:var(--ac);font-weight:700}
+[hidden]{display:none!important}
+</style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col justify-between">
-
-    <!-- Container Principal / Autenticação -->
-    <div id="auth-container" class="flex-grow flex items-center justify-center p-4">
-        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-100 text-center">
-            <div class="inline-flex items-center justify-center w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl mb-4 text-2xl font-bold shadow-inner">
-                O
-            </div>
-            <h1 class="text-2xl font-bold text-slate-900 mb-2">Oikonomia</h1>
-            <p class="text-slate-500 text-sm mb-6">Controle Financeiro Pessoal</p>
-
-            <button id="btn-login-google" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-3 px-4 rounded-xl transition shadow-sm">
-                <svg class="w-5 h-5" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                </svg>
-                Entrar com o Google
-            </button>
-            <p id="auth-error" class="text-rose-600 text-xs mt-4 hidden"></p>
-        </div>
-    </div>
-
-    <!-- Conteúdo Principal do App (Oculto até logar) -->
-    <div id="app-container" class="hidden flex-grow flex flex-col">
-        <!-- Header -->
-        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-            <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
-                <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-sm">O</div>
-                    <span class="font-bold text-lg text-slate-800">Oikonomia</span>
-                </div>
-                <div class="flex items-center gap-3">
-                    <span id="user-email" class="text-xs text-slate-500 hidden sm:inline"></span>
-                    <button id="btn-logout" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-3 py-1.5 rounded-lg transition">Sair</button>
-                </div>
-            </div>
-        </header>
-
-        <!-- Main Body -->
-        <main class="max-w-4xl mx-auto px-4 py-6 w-full flex-grow space-y-6">
-
-            <!-- Resumo Financeiro / Total -->
-            <div class="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl p-6 text-white shadow-lg">
-                <p class="text-indigo-200 text-xs font-medium uppercase tracking-wider">Saldo Geral Atual</p>
-                <h2 id="total-geral" class="text-3xl font-bold mt-1">R$ 0,00</h2>
-            </div>
-
-            <!-- Formulário de Nova Transação -->
-            <section class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                <h3 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
-                    <span>➕</span> Novo Lançamento
-                </h3>
-
-                <form id="transacao-form" class="space-y-4">
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Tipo de Lançamento</label>
-                            <select id="tipo-lancamento" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                                <option value="PIX">Pix</option>
-                                <option value="Compra" selected>Compra (Cartão/Dinheiro)</option>
-                                <option value="Conta">Conta Fixa / Boleto</option>
-                                <option value="Outro">Outro Lançamento</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Valor (R$)</label>
-                            <input type="number" step="0.01" id="valor" required placeholder="0,00" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Data</label>
-                            <input type="date" id="data" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                        </div>
-                    </div>
-
-                    <!-- Campos dinâmicos: PIX -->
-                    <div id="bloco-pix" class="hidden space-y-3 pt-2 border-t border-slate-100">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1">Subtipo</label>
-                                <select id="pix-subtipo" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                                    <option value="Envio">Pix Enviado (Despesa)</option>
-                                    <option value="Recebimento">Pix Recebido (Receita)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <label class="block text-xs font-semibold text-slate-600">Destinatário</label>
-                                    <button type="button" onclick="abrirModalGerenciador('destinatarios')" class="text-xs text-indigo-600 hover:underline">Gerenciar</button>
-                                </div>
-                                <select id="select-destinatario-pix" onchange="verificarNovoCampo(this, 'container-novo-destinatario')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                                    <option value="">Selecione...</option>
-                                    <option value="novo">+ Cadastrar Novo</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div id="container-novo-destinatario" class="hidden flex gap-2">
-                            <input type="text" id="input-novo-destinatario" placeholder="Nome do novo destinatário" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-destinatario" checked> Salvar na lista</label>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
-                            <select id="select-categoria-pix" onchange="verificarNovoCampo(this, 'container-nova-categoria-pix')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                                <option value="novo">+ Cadastrar Nova</option>
-                            </select>
-                        </div>
-                        <div id="container-nova-categoria-pix" class="hidden flex gap-2">
-                            <input type="text" id="input-nova-categoria-pix" placeholder="Nome da nova categoria" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-categoria-pix" checked> Salvar na lista</label>
-                        </div>
-                    </div>
-
-                    <!-- Campos dinâmicos: COMPRA -->
-                    <div id="bloco-compra" class="space-y-3 pt-2 border-t border-slate-100">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <label class="block text-xs font-semibold text-slate-600">Local / Estabelecimento</label>
-                                    <button type="button" onclick="abrirModalGerenciador('locais')" class="text-xs text-indigo-600 hover:underline">Gerenciar</button>
-                                </div>
-                                <select id="select-local-compra" onchange="verificarNovoCampo(this, 'container-novo-local')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                                    <option value="">Selecione...</option>
-                                    <option value="novo">+ Cadastrar Novo</option>
-                                </select>
-                            </div>
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <label class="block text-xs font-semibold text-slate-600">Forma de Pagamento / Cartão</label>
-                                    <button type="button" onclick="abrirModalGerenciador('cartoes')" class="text-xs text-indigo-600 hover:underline">Gerenciar</button>
-                                </div>
-                                <select id="select-cartao-compra" onchange="verificarNovoCampo(this, 'container-novo-cartao')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                                    <option value="">Selecione...</option>
-                                    <option value="novo">+ Cadastrar Novo</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div id="container-novo-local" class="hidden flex gap-2">
-                            <input type="text" id="input-novo-local" placeholder="Nome do novo local" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-local" checked> Salvar</label>
-                        </div>
-                        <div id="container-novo-cartao" class="hidden flex gap-2">
-                            <input type="text" id="input-novo-cartao" placeholder="Nome do novo cartão/forma" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-cartao" checked> Salvar</label>
-                        </div>
-                        <div>
-                            <div class="flex justify-between items-center mb-1">
-                                <label class="block text-xs font-semibold text-slate-600">Categoria</label>
-                                <button type="button" onclick="abrirModalGerenciador('categorias')" class="text-xs text-indigo-600 hover:underline">Gerenciar</button>
-                            </div>
-                            <select id="select-categoria-compra" onchange="verificarNovoCampo(this, 'container-nova-categoria-compra')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                                <option value="novo">+ Cadastrar Nova</option>
-                            </select>
-                        </div>
-                        <div id="container-nova-categoria-compra" class="hidden flex gap-2">
-                            <input type="text" id="input-nova-categoria-compra" placeholder="Nome da nova categoria" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-categoria-compra" checked> Salvar</label>
-                        </div>
-                    </div>
-
-                    <!-- Campos dinâmicos: CONTA -->
-                    <div id="bloco-conta" class="hidden space-y-3 pt-2 border-t border-slate-100">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1">Concessionária / Conta</label>
-                                <select id="select-concessionaria" onchange="verificarNovoCampo(this, 'container-nova-concessionaria')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                                    <option value="">Selecione...</option>
-                                    <option value="novo">+ Cadastrar Nova</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1">Banco Pagador</label>
-                                <select id="select-banco-pagador" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                                    <option value="Nubank">Nubank</option>
-                                    <option value="Itaú">Itaú</option>
-                                    <option value="Bradesco">Bradesco</option>
-                                    <option value="Banco do Brasil">Banco do Brasil</option>
-                                    <option value="Santander">Santander</option>
-                                    <option value="Outro">Outro</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div id="container-nova-concessionaria" class="hidden flex gap-2">
-                            <input type="text" id="input-nova-concessionaria" placeholder="Nome da concessionária/conta" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-concessionaria" checked> Salvar</label>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
-                            <select id="select-categoria-conta" onchange="verificarNovoCampo(this, 'container-nova-categoria-conta')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                                <option value="novo">+ Cadastrar Nova</option>
-                            </select>
-                        </div>
-                        <div id="container-nova-categoria-conta" class="hidden flex gap-2">
-                            <input type="text" id="input-nova-categoria-conta" placeholder="Nome da nova categoria" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-categoria-conta" checked> Salvar</label>
-                        </div>
-                    </div>
-
-                    <!-- Campos dinâmicos: OUTRO -->
-                    <div id="bloco-outro" class="hidden space-y-3 pt-2 border-t border-slate-100">
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Descrição / Observação</label>
-                            <input type="text" id="input-outro-descricao" placeholder="Ex: Doação, Venda de item usado..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
-                            <select id="select-categoria-outro" onchange="verificarNovoCampo(this, 'container-nova-categoria-outro')" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                                <option value="novo">+ Cadastrar Nova</option>
-                            </select>
-                        </div>
-                        <div id="container-nova-categoria-outro" class="hidden flex gap-2">
-                            <input type="text" id="input-nova-categoria-outro" placeholder="Nome da nova categoria" class="flex-grow bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <label class="flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" id="check-salvar-categoria-outro" checked> Salvar</label>
-                        </div>
-                    </div>
-
-                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-xl transition text-sm shadow-sm">
-                        Adicionar Lançamento
-                    </button>
-                </form>
-            </section>
-
-            <!-- Histórico de Transações -->
-            <section class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                <h3 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
-                    <span>📋</span> Histórico de Lançamentos
-                </h3>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="border-b border-slate-100 text-xs text-slate-400 uppercase">
-                                <th class="p-3 font-semibold">Data</th>
-                                <th class="p-3 font-semibold">Descrição</th>
-                                <th class="p-3 font-semibold">Categoria</th>
-                                <th class="p-3 font-semibold text-right">Valor</th>
-                                <th class="p-3 font-semibold text-center">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="lista-transacoes" class="divide-y divide-slate-50 text-sm">
-                            <!-- Inserido via JS -->
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-        </main>
-    </div>
-
-    <!-- Modal Gerenciador de Listas -->
-    <div id="modal-gerenciador" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-100">
-            <h3 id="titulo-gerenciador" class="text-lg font-bold text-slate-800 mb-4">Gerenciar Itens</h3>
-            <div id="lista-gerenciador-itens" class="max-h-60 overflow-y-auto divide-y divide-slate-100 mb-4 pr-1">
-                <!-- Itens listados via JS -->
-            </div>
-            <div class="flex justify-end">
-                <button onclick="document.getElementById('modal-gerenciador').classList.add('hidden')" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm transition">Fechar</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Editar Transação -->
-    <div id="modal-editar-transacao" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-100">
-            <h3 class="text-lg font-bold text-slate-800 mb-4">Editar Lançamento</h3>
-            <form id="form-editar-transacao" class="space-y-4">
-                <input type="hidden" id="edit-id-transacao">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Descrição</label>
-                    <input type="text" id="edit-descricao" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Valor (R$)</label>
-                    <input type="number" step="0.01" id="edit-valor" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
-                    <select id="edit-categoria" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                        <!-- Preenchido via JS -->
-                    </select>
-                </div>
-                <div id="edit-bloco-compra" class="hidden space-y-3 pt-2 border-t border-slate-100">
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Local / Estabelecimento</label>
-                        <select id="edit-local" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <!-- Preenchido via JS -->
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Forma de Pagamento / Cartão</label>
-                        <select id="edit-cartao" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <!-- Preenchido via JS -->
-                        </select>
-                    </div>
-                </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" onclick="fecharModalEditarTransacao()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm transition">Cancelar</button>
-                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition">Salvar Alterações</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Scripts do Firebase e Lógica -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc, query, orderBy, onSnapshot, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
-        import { firebaseConfig } from "./oikonomia-fire-config.js";
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const provider = new GoogleAuthProvider();
-
-        const authContainer = document.getElementById('auth-container');
-        const appContainer = document.getElementById('app-container');
-        const btnLoginGoogle = document.getElementById('btn-login-google');
-        const btnLogout = document.getElementById('btn-logout');
-        const authError = document.getElementById('auth-error');
-        const userEmailSpan = document.getElementById('user-email');
-
-        let dadosGlobaisAuxiliares = {};
-        let mapaLocalCategoria = {};
-
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                // Usuário autenticado com sucesso
-                authContainer.classList.add('hidden');
-                appContainer.classList.remove('hidden');
-                userEmailSpan.innerText = user.email;
-
-                await carregarListasAuxiliares();
-                carregarDados();
-            } else {
-                // Não autenticado
-                authContainer.classList.remove('hidden');
-                appContainer.classList.add('hidden');
-                userEmailSpan.innerText = '';
-            }
-        });
-
-        btnLoginGoogle.addEventListener('click', async () => {
-            authError.classList.add('hidden');
-            authError.innerText = '';
-
-            try {
-                await signInWithPopup(auth, provider);
-            } catch (error) {
-                console.error("Erro no login com pop-up:", error.code, error.message);
-                if (error.code !== 'auth/popup-closed-by-user') {
-                    authError.innerText = "Erro ao autenticar com o Google. Tente novamente.";
-                    authError.classList.remove('hidden');
-                }
-            }
-        });
-
-        btnLogout.addEventListener('click', async () => {
-            await signOut(auth);
-        });
-
-        document.getElementById('data').valueAsDate = new Date();
-
-        const CATEGORIAS_PADRAO = ['Alimentação', 'Moradia', 'Transporte', 'Carro Combustível', 'Carro Lavação', 'Lazer', 'Investimentos', 'Outros'];
-
-        async function carregarListasAuxiliares() {
-            try {
-                const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
-                const docSnap = await getDoc(docRef);
-                let dados = {};
-                if (docSnap.exists()) {
-                    dados = docSnap.data();
-                }
-
-                dadosGlobaisAuxiliares = dados;
-                mapaLocalCategoria = dados.mapaLocalCategoria || {};
-
-                popularSelect('select-destinatario-pix', dados.destinatarios || []);
-                popularSelect('select-local-compra', dados.locais || []);
-                popularSelect('select-cartao-compra', dados.cartoes || [], ['Dinheiro', 'Pix']);
-                popularSelect('select-concessionaria', dados.concessionarias || []);
-
-                popularSelect('edit-local', dados.locais || []);
-                popularSelect('edit-cartao', dados.cartoes || [], ['Dinheiro', 'Pix']);
-
-                const categoriasSalvas = dados.categorias || CATEGORIAS_PADRAO;
-                popularSelect('select-categoria-pix', categoriasSalvas);
-                popularSelect('select-categoria-compra', categoriasSalvas);
-                popularSelect('select-categoria-conta', categoriasSalvas);
-                popularSelect('select-categoria-outro', categoriasSalvas);
-                popularSelect('edit-categoria', categoriasSalvas);
-
-            } catch (e) {
-                console.error("Erro ao carregar listas auxiliares:", e);
-                popularSelect('select-categoria-pix', CATEGORIAS_PADRAO);
-                popularSelect('select-categoria-compra', CATEGORIAS_PADRAO);
-                popularSelect('select-categoria-conta', CATEGORIAS_PADRAO);
-                popularSelect('select-categoria-outro', CATEGORIAS_PADRAO);
-                popularSelect('edit-categoria', CATEGORIAS_PADRAO);
-            }
-        }
-
-        window.verificarNovoCampo = function(selectEl, containerId) {
-            const container = document.getElementById(containerId);
-            if (!container) return;
-            if (selectEl.value === 'novo') {
-                container.classList.remove('hidden');
-            } else {
-                container.classList.add('hidden');
-            }
-
-            if (selectEl.id === 'select-local-compra' && selectEl.value && selectEl.value !== 'novo') {
-                const categoriaSugerida = mapaLocalCategoria[selectEl.value];
-                if (categoriaSugerida) {
-                    const selCat = document.getElementById('select-categoria-compra');
-                    if (selCat) selCat.value = categoriaSugerida;
-                }
-            }
-        };
-
-        function popularSelect(elementId, itens, fixos = []) {
-            const select = document.getElementById(elementId);
-            if (!select) return;
-
-            const primeiraOpcao = select.options[0];
-            const opcaoNovo = select.querySelector('option[value="novo"]');
-
-            select.innerHTML = '';
-            if (primeiraOpcao) select.appendChild(primeiraOpcao);
-
-            fixos.forEach(f => {
-                const opt = document.createElement('option');
-                opt.value = f;
-                opt.textContent = f;
-                select.appendChild(opt);
-            });
-
-            const itensUnicos = [...new Set(itens)];
-            itensUnicos.forEach(item => {
-                const opt = document.createElement('option');
-                opt.value = item;
-                opt.textContent = item;
-                select.appendChild(opt);
-            });
-
-            if (opcaoNovo) select.appendChild(opcaoNovo);
-        }
-
-        async function salvarItemAuxiliar(campo, valor) {
-            if (!valor) return;
-            const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
-            try {
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    await updateDoc(docRef, {
-                        [campo]: arrayUnion(valor)
-                    });
-                } else {
-                    await setDoc(docRef, {
-                        [campo]: [valor]
-                    });
-                }
-                await carregarListasAuxiliares();
-            } catch (e) {
-                console.error("Erro ao salvar item auxiliar:", e);
-            }
-        }
-
-        async function salvarRelacionamentoLocalCategoria(local, categoria) {
-            if (!local || !categoria) return;
-            const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
-            try {
-                const docSnap = await getDoc(docRef);
-                let dados = docSnap.exists() ? docSnap.data() : {};
-                let mapa = dados.mapaLocalCategoria || {};
-
-                mapa[local] = categoria;
-
-                if (docSnap.exists()) {
-                    await updateDoc(docRef, { mapaLocalCategoria: mapa });
-                } else {
-                    await setDoc(docRef, { mapaLocalCategoria: mapa });
-                }
-                mapaLocalCategoria = mapa;
-            } catch (e) {
-                console.error("Erro ao salvar relacionamento local/categoria:", e);
-            }
-        }
-
-        window.abrirModalGerenciador = function(tipo) {
-            const modal = document.getElementById('modal-gerenciador');
-            const titulo = document.getElementById('titulo-gerenciador');
-            const container = document.getElementById('lista-gerenciador-itens');
-
-            let campoFirestore = '';
-            let nomeTitulo = '';
-
-            if (tipo === 'locais') {
-                campoFirestore = 'locais';
-                nomeTitulo = 'Locais e Estabelecimentos';
-            } else if (tipo === 'cartoes') {
-                campoFirestore = 'cartoes';
-                nomeTitulo = 'Formas de Pagamento / Cartões';
-            } else if (tipo === 'categorias') {
-                campoFirestore = 'categorias';
-                nomeTitulo = 'Categorias';
-            }
-
-            titulo.innerText = nomeTitulo;
-            const itens = dadosGlobaisAuxiliares[campoFirestore] || (tipo === 'categorias' ? CATEGORIAS_PADRAO : []);
-
-            if (itens.length === 0) {
-                container.innerHTML = `<p class="p-4 text-center text-slate-400 text-sm">Nenhum item cadastrado.</p>`;
-            } else {
-                let html = '';
-                itens.forEach(item => {
-                    html += `
-                        <div class="py-2.5 flex justify-between items-center text-sm">
-                            <span class="font-medium text-slate-700">${item}</span>
-                            <div class="flex gap-2">
-                                <button onclick="editarItemAuxiliar('${campoFirestore}', '${item}')" class="text-indigo-600 hover:text-indigo-800 text-xs font-semibold px-2 py-1 bg-indigo-50 rounded">Editar</button>
-                                <button onclick="excluirItemAuxiliar('${campoFirestore}', '${item}')" class="text-rose-600 hover:text-rose-800 text-xs font-semibold px-2 py-1 bg-rose-50 rounded">Excluir</button>
-                            </div>
-                        </div>
-                    `;
-                });
-                container.innerHTML = html;
-            }
-
-            modal.classList.remove('hidden');
-        };
-
-        window.editarItemAuxiliar = async function(campo, antigoValor) {
-            const novoValor = prompt(`Editar "${antigoValor}" para:`, antigoValor);
-            if (!novoValor || novoValor.trim() === '' || novoValor === antigoValor) return;
-
-            const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
-            try {
-                const docSnap = await getDoc(docRef);
-                if (!docSnap.exists()) return;
-                let dados = docSnap.data();
-                let lista = dados[campo] || [];
-
-                lista = lista.map(i => i === antigoValor ? novoValor.trim() : i);
-
-                await updateDoc(docRef, { [campo]: lista });
-                await carregarListasAuxiliares();
-                window.abrirModalGerenciador(campo === 'locais' ? 'locais' : campo === 'cartoes' ? 'cartoes' : 'categorias');
-            } catch (e) {
-                console.error("Erro ao editar item:", e);
-                alert("Erro ao editar.");
-            }
-        };
-
-        window.excluirItemAuxiliar = async function(campo, valorParaExcluir) {
-            if (!confirm(`Deseja realmente excluir "${valorParaExcluir}"?`)) return;
-
-            const docRef = doc(db, 'configuracoes', 'listas_auxiliares');
-            try {
-                const docSnap = await getDoc(docRef);
-                if (!docSnap.exists()) return;
-                let dados = docSnap.data();
-                let lista = dados[campo] || [];
-
-                lista = lista.filter(i => i !== valorParaExcluir);
-
-                await updateDoc(docRef, { [campo]: lista });
-                await carregarListasAuxiliares();
-                window.abrirModalGerenciador(campo === 'locais' ? 'locais' : campo === 'cartoes' ? 'cartoes' : 'categorias');
-            } catch (e) {
-                console.error("Erro ao excluir item:", e);
-                alert("Erro ao excluir.");
-            }
-        };
-
-        // Troca dinâmica dos blocos de formulário conforme o tipo geral
-        const selectTipoLancamento = document.getElementById('tipo-lancamento');
-        selectTipoLancamento.addEventListener('change', (e) => {
-            const val = e.target.value;
-            ['bloco-pix', 'bloco-compra', 'bloco-conta', 'bloco-outro'].forEach(id => {
-                document.getElementById(id).classList.add('hidden');
-            });
-
-            if (val === 'PIX') document.getElementById('bloco-pix').classList.remove('hidden');
-            if (val === 'Compra') document.getElementById('bloco-compra').classList.remove('hidden');
-            if (val === 'Conta') document.getElementById('bloco-conta').classList.remove('hidden');
-            if (val === 'Outro') document.getElementById('bloco-outro').classList.remove('hidden');
-        });
-
-        // Salvar Transação Inteligente
-        const form = document.getElementById('transacao-form');
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const tipoGeral = document.getElementById('tipo-lancamento').value;
-            const valor = parseFloat(document.getElementById('valor').value);
-            const data = document.getElementById('data').value;
-
-            let descricaoFinal = "";
-            let tipoTransacao = "despesa";
-            let categoria = "";
-
-            if (tipoGeral === 'PIX') {
-                const subtipo = document.getElementById('pix-subtipo').value;
-                let destinatario = document.getElementById('select-destinatario-pix').value;
-
-                if (destinatario === 'novo') {
-                    destinatario = document.getElementById('input-novo-destinatario').value.trim();
-                    if (document.getElementById('check-salvar-destinatario').checked && destinatario) {
-                        await salvarItemAuxiliar('destinatarios', destinatario);
-                    }
-                }
-
-                categoria = document.getElementById('select-categoria-pix').value;
-                if (categoria === 'novo') {
-                    categoria = document.getElementById('input-nova-categoria-pix').value.trim();
-                    if (document.getElementById('check-salvar-categoria-pix').checked && categoria) {
-                        await salvarItemAuxiliar('categorias', categoria);
-                    }
-                }
-
-                descricaoFinal = `PIX (${subtipo}): ${destinatario}`;
-                tipoTransacao = subtipo === 'Recebimento' ? 'receita' : 'despesa';
-
-            } else if (tipoGeral === 'Compra') {
-                let local = document.getElementById('select-local-compra').value;
-                if (local === 'novo') {
-                    local = document.getElementById('input-novo-local').value.trim();
-                    if (document.getElementById('check-salvar-local').checked && local) {
-                        await salvarItemAuxiliar('locais', local);
-                    }
-                }
-
-                let cartao = document.getElementById('select-cartao-compra').value;
-                if (cartao === 'novo') {
-                    cartao = document.getElementById('input-novo-cartao').value.trim();
-                    if (document.getElementById('check-salvar-cartao').checked && cartao) {
-                        await salvarItemAuxiliar('cartoes', cartao);
-                    }
-                }
-
-                categoria = document.getElementById('select-categoria-compra').value;
-                if (categoria === 'novo') {
-                    categoria = document.getElementById('input-nova-categoria-compra').value.trim();
-                    if (document.getElementById('check-salvar-categoria-compra').checked && categoria) {
-                        await salvarItemAuxiliar('categorias', categoria);
-                    }
-                }
-
-                if (local && local !== 'novo') {
-                    await salvarRelacionamentoLocalCategoria(local, categoria);
-                }
-
-                descricaoFinal = `Compra em ${local} (Pgto: ${cartao})`;
-                tipoTransacao = 'despesa';
-
-            } else if (tipoGeral === 'Conta') {
-                let concessionaria = document.getElementById('select-concessionaria').value;
-                if (concessionaria === 'novo') {
-                    concessionaria = document.getElementById('input-nova-concessionaria').value.trim();
-                    if (document.getElementById('check-salvar-concessionaria').checked && concessionaria) {
-                        await salvarItemAuxiliar('concessionarias', concessionaria);
-                    }
-                }
-                const banco = document.getElementById('select-banco-pagador').value;
-
-                categoria = document.getElementById('select-categoria-conta').value;
-                if (categoria === 'novo') {
-                    categoria = document.getElementById('input-nova-categoria-conta').value.trim();
-                    if (document.getElementById('check-salvar-categoria-conta').checked && categoria) {
-                        await salvarItemAuxiliar('categorias', categoria);
-                    }
-                }
-
-                descricaoFinal = `Conta: ${concessionaria} (Banco: ${banco})`;
-                tipoTransacao = 'despesa';
-
-            } else if (tipoGeral === 'Outro') {
-                const obs = document.getElementById('input-outro-descricao').value.trim();
-                categoria = document.getElementById('select-categoria-outro').value;
-                if (categoria === 'novo') {
-                    categoria = document.getElementById('input-nova-categoria-outro').value.trim();
-                    if (document.getElementById('check-salvar-categoria-outro').checked && categoria) {
-                        await salvarItemAuxiliar('categorias', categoria);
-                    }
-                }
-                descricaoFinal = obs ? `Avulso: ${obs}` : "Outro Lançamento";
-                tipoTransacao = 'despesa';
-            }
-
-            const novaTransacao = {
-                tipo: tipoTransacao,
-                descricao: descricaoFinal,
-                valor: valor,
-                categoria: categoria || 'Outros',
-                data: data,
-                criadoEm: serverTimestamp()
-            };
-
-            try {
-                await addDoc(collection(db, 'transacoes'), novaTransacao);
-                form.reset();
-                document.getElementById('data').valueAsDate = new Date();
-
-                ['bloco-pix', 'bloco-conta', 'bloco-outro'].forEach(id => {
-                    document.getElementById(id).classList.add('hidden');
-                });
-                document.getElementById('bloco-compra').classList.remove('hidden');
-                document.getElementById('tipo-lancamento').value = 'Compra';
-
-                await carregarListasAuxiliares();
-            } catch (error) {
-                console.error("Erro ao salvar transação: ", error);
-                alert("Erro ao salvar transação.");
-            }
-        });
-
-        function carregarDados() {
-            const listaTransacoesEl = document.getElementById('lista-transacoes');
-            const totalGeralEl = document.getElementById('total-geral');
-
-            const q = query(collection(db, 'transacoes'), orderBy('data', 'desc'));
-
-            onSnapshot(q, (snapshot) => {
-                let html = '';
-                let somaTotal = 0;
-
-                if (snapshot.empty) {
-                    listaTransacoesEl.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">Nenhum lançamento encontrado.</td></tr>`;
-                    totalGeralEl.innerText = "R$ 0,00";
-                    return;
-                }
-
-                snapshot.forEach((docSnap) => {
-                    const t = docSnap.data();
-                    const id = docSnap.id;
-                    const valorFormatado = (t.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                    const corValor = t.tipo === 'receita' ? 'text-emerald-600' : 'text-rose-600';
-                    const sinal = t.tipo === 'receita' ? '+' : '-';
-
-                    if (t.tipo === 'receita') {
-                        somaTotal += t.valor;
-                    } else {
-                        somaTotal -= t.valor;
-                    }
-
-                    const tDataJson = encodeURIComponent(JSON.stringify(t));
-
-                    html += `
-                        <tr class="hover:bg-slate-50 transition">
-                            <td class="p-3 text-slate-500">${t.data ? t.data.split('-').reverse().join('/') : '--/--/----'}</td>
-                            <td class="p-3 font-medium">${t.descricao}</td>
-                            <td class="p-3"><span class="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">${t.categoria}</span></td>
-                            <td class="p-3 text-right font-bold ${corValor}">${sinal} ${valorFormatado}</td>
-                            <td class="p-3 text-center space-x-1">
-                                <button onclick="abrirEditarTransacao('${id}', '${tDataJson}')" class="text-indigo-600 hover:text-indigo-800 p-1 font-semibold text-xs bg-indigo-50 rounded" title="Editar">✏️</button>
-                                <button onclick="excluirTransacao('${id}')" class="text-rose-600 hover:text-rose-800 p-1 font-semibold text-xs bg-rose-50 rounded" title="Excluir">🗑️</button>
-                            </td>
-                        </tr>
-                    `;
-                });
-
-                listaTransacoesEl.innerHTML = html;
-                totalGeralEl.innerText = somaTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                totalGeralEl.className = `text-3xl font-bold mt-1 ${somaTotal >= 0 ? 'text-white' : 'text-rose-200'}`;
-            });
-        }
-
-        window.abrirEditarTransacao = function(id, tDataJsonStr) {
-            const t = JSON.parse(decodeURIComponent(tDataJsonStr));
-            document.getElementById('edit-id-transacao').value = id;
-            document.getElementById('edit-descricao').value = t.descricao || '';
-            document.getElementById('edit-valor').value = t.valor || 0;
-            document.getElementById('edit-categoria').value = t.categoria || '';
-
-            const blocoCompraEdit = document.getElementById('edit-bloco-compra');
-
-            if (t.descricao && t.descricao.startsWith('Compra em ')) {
-                blocoCompraEdit.classList.remove('hidden');
-                try {
-                    const partes = t.descricao.replace('Compra em ', '').split(' (Pgto: ');
-                    const localExtraido = partes[0];
-                    const cartaoExtraido = partes[1] ? partes[1].replace(')', '') : '';
-
-                    document.getElementById('edit-local').value = localExtraido;
-                    document.getElementById('edit-cartao').value = cartaoExtraido;
-                } catch(e) {
-                    console.error("Erro ao analisar detalhes da compra para edição", e);
-                }
-            } else {
-                blocoCompraEdit.classList.add('hidden');
-            }
-
-            document.getElementById('modal-editar-transacao').classList.remove('hidden');
-        };
-
-        window.fecharModalEditarTransacao = function() {
-            document.getElementById('modal-editar-transacao').classList.add('hidden');
-        };
-
-        const formEditarTransacao = document.getElementById('form-editar-transacao');
-        formEditarTransacao.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const id = document.getElementById('edit-id-transacao').value;
-            const novoValor = parseFloat(document.getElementById('edit-valor').value);
-            const novaCategoria = document.getElementById('edit-categoria').value;
-            let novaDescricao = document.getElementById('edit-descricao').value;
-
-            const blocoCompraEdit = document.getElementById('edit-bloco-compra');
-            if (!blocoCompraEdit.classList.contains('hidden')) {
-                const novoLocal = document.getElementById('edit-local').value;
-                const novoCartao = document.getElementById('edit-cartao').value;
-                if (novoLocal && novoCartao) {
-                    novaDescricao = `Compra em ${novoLocal} (Pgto: ${novoCartao})`;
-                }
-            }
-
-            try {
-                const docRef = doc(db, 'transacoes', id);
-                await updateDoc(docRef, {
-                    valor: novoValor,
-                    categoria: novaCategoria,
-                    descricao: novaDescricao
-                });
-                fecharModalEditarTransacao();
-            } catch (e) {
-                console.error("Erro ao atualizar transação:", e);
-                alert("Erro ao atualizar transação.");
-            }
-        });
-
-        window.excluirTransacao = async function(id) {
-            if (!confirm("Deseja realmente excluir este lançamento?")) return;
-            try {
-                await deleteDoc(doc(db, 'transacoes', id));
-            } catch (e) {
-                console.error("Erro ao excluir transação:", e);
-                alert("Erro ao excluir transação.");
-            }
-        };
-    </script>
+<body>
+<h1>🏠 Oikonomia-Finan</h1>
+
+<div id="login" class="wrap" hidden><form id="lf" class="card">
+  <label>E-mail<input id="em" type="email" autocomplete="username" required></label>
+  <label>Senha<input id="pw" type="password" autocomplete="current-password" required></label>
+  <button class="pri">Entrar</button><p id="lmsg" class="neg"></p>
+</form></div>
+
+<div id="onboard" class="wrap" hidden>
+  <div class="card"><b>Primeiro acesso: criar a família</b>
+    <label>Nome da família<input id="hn" value="Nossa família"></label>
+    <label>Seu nome<input id="mn"></label>
+    <button class="pri" id="mk">Criar família</button></div>
+  <div class="card"><b>Ou entrar numa família existente</b>
+    <label>Código de convite<input id="cd"></label>
+    <label>Seu nome<input id="mn2"></label>
+    <button class="pri" id="jn">Entrar</button></div>
+  <p id="omsg" class="neg"></p>
+</div>
+
+<div id="app" hidden><main id="main"></main>
+<nav><button data-t="add">➕ Lançar</button><button data-t="list">📋 Lançamentos</button><button data-t="acc">🏦 Contas</button></nav></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL="https://qjsqgujcsjxhvjumpbtd.supabase.co";
+const SUPABASE_KEY="sb_publishable_pxLDAve7JSVg-R0Pv5hPWQ__X33phlf";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=(v,c)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:(c||"BRL").trim()}).format(v);
+const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const num=s=>{s=s.trim();return s.includes(",")?parseFloat(s.replace(/\./g,"").replace(",",".")):parseFloat(s)};
+const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra"};
+let S={hid:null,accounts:[],cats:[],kind:"expense",tab:"add",rt:false,lastAcc:null};
+const show=v=>["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);
+
+$("lf").onsubmit=async e=>{e.preventDefault();
+  const {error}=await sb.auth.signInWithPassword({email:$("em").value,password:$("pw").value});
+  error?$("lmsg").textContent="E-mail ou senha incorretos.":start();};
+sb.auth.onAuthStateChange(ev=>{if(ev==="SIGNED_OUT"){S.hid=null;show("login");}});
+
+async function start(){
+  const {data:{user}}=await sb.auth.getUser();
+  if(!user)return show("login");
+  const {data:m}=await sb.from("household_members").select("household_id").eq("user_id",user.id).maybeSingle();
+  if(!m)return show("onboard");
+  S.hid=m.household_id;show("app");await loadRef();go(S.tab);subscribe();
+}
+async function loadRef(){
+  const [a,c]=await Promise.all([
+    sb.from("accounts").select("*").eq("is_active",true).order("name"),
+    sb.from("categories").select("*").eq("is_active",true).order("name")]);
+  S.accounts=a.data||[];S.cats=c.data||[];
+}
+function subscribe(){if(S.rt)return;S.rt=true;
+  sb.channel("rt").on("postgres_changes",{event:"*",schema:"public",table:"transactions"},()=>{if(S.tab==="list")viewList();}).subscribe();}
+
+async function onb(fn,args){
+  const {error}=await sb.rpc(fn,args);
+  error?$("omsg").textContent=error.message:start();}
+$("mk").onclick=()=>onb("create_household",{p_name:$("hn").value,p_display_name:$("mn").value});
+$("jn").onclick=()=>onb("join_household",{p_code:$("cd").value.trim(),p_display_name:$("mn2").value});
+
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>go(b.dataset.t));
+function go(t){S.tab=t;
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
+  ({add:viewAdd,list:viewList,acc:viewAcc})[t]();}
+
+function viewAdd(){
+  if(!S.accounts.length){$("main").innerHTML='<div class="card">Cadastre uma conta primeiro, na aba <b>Contas</b>.</div>';return;}
+  const cats=S.cats.filter(c=>c.kind===S.kind);
+  $("main").innerHTML=`<div class="card">
+   <div class="seg"><button data-k="expense" class="${S.kind==="expense"?"on":""}">Despesa</button><button data-k="income" class="${S.kind==="income"?"on":""}">Receita</button></div>
+   <label>Valor<input id="v" inputmode="decimal" placeholder="0,00"></label>
+   <label>Categoria<select id="cat">${cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></label>
+   <label>Conta / cartão<select id="acc">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.lastAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
+   <label>Descrição<input id="desc"></label>
+   <label>Data<input id="dt" type="date" value="${today()}"></label>
+   <button class="pri" id="save">Salvar</button><p id="msg" class="mu"></p></div>`;
+  document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{S.kind=b.dataset.k;viewAdd();});
+  $("save").onclick=async()=>{
+    const val=num($("v").value);
+    if(!(val>0))return $("msg").textContent="Informe um valor válido.";
+    S.lastAcc=$("acc").value;
+    const {error}=await sb.from("transactions").insert({account_id:S.lastAcc,date:$("dt").value,
+      amount:S.kind==="expense"?-val:val,category_id:$("cat").value||null,description:$("desc").value||null,
+      status:$("dt").value>today()?"planned":"posted"});
+    if(error)return $("msg").textContent="Erro: "+error.message;
+    $("v").value="";$("desc").value="";$("msg").textContent="Salvo ✓";};
+}
+
+async function viewList(){
+  const {data,error}=await sb.from("transactions")
+    .select("id,date,amount,currency,description,status,installment_number,installment_total,categories(name),accounts(name)")
+    .order("date",{ascending:false}).order("created_at",{ascending:false}).limit(50);
+  if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
+  $("main").innerHTML=`<div class="card">${data.length?data.map(t=>`<div class="row"><div>
+    <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
+    <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.status==="planned"?" · previsto":""}</div></div>
+    <div><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,t.currency)}</span><button class="x" data-del="${t.id}">✕</button></div></div>`).join(""):'<span class="mu">Nenhum lançamento ainda.</span>'}</div>`;
+  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
+    if(confirm("Apagar este lançamento?")){await sb.from("transactions").delete().eq("id",b.dataset.del);viewList();}});
+}
+
+async function viewAcc(){
+  const [{data:bal},{data:h}]=await Promise.all([
+    sb.from("account_balances").select("*").order("name"),
+    sb.from("households").select("invite_code").eq("id",S.hid).single()]);
+  $("main").innerHTML=`<div class="card"><b>Contas</b>${(bal||[]).map(a=>`<div class="row"><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div>${fmt(a.balance,a.currency)}</div></div>`).join("")||'<p class="mu">Nenhuma conta.</p>'}</div>
+  <div class="card"><b>Nova conta</b>
+   <label>Nome<input id="an"></label>
+   <label>Tipo<select id="at">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label>
+   <label>Moeda (3 letras)<input id="ac" value="BRL" maxlength="3"></label>
+   <label>Cartão: dia de fechamento<input id="acl" type="number" min="1" max="31"></label>
+   <label>Cartão: dia de vencimento<input id="adu" type="number" min="1" max="31"></label>
+   <button class="pri" id="ads">Adicionar</button><p id="amsg" class="neg"></p></div>
+  <div class="card mu">Código de convite da família: <b>${esc(h?.invite_code)}</b><br><br><button id="out">Sair</button></div>`;
+  $("ads").onclick=async()=>{
+    const {error}=await sb.from("accounts").insert({household_id:S.hid,name:$("an").value,type:$("at").value,
+      currency:$("ac").value.toUpperCase(),closing_day:+$("acl").value||null,due_day:+$("adu").value||null});
+    if(error)return $("amsg").textContent=error.message;
+    await loadRef();viewAcc();};
+  $("out").onclick=()=>sb.auth.signOut();
+}
+sb.auth.getSession().then(({data:{session}})=>session?start():show("login"));
+</script>
 </body>
 </html>
