@@ -23,6 +23,9 @@ button{font:inherit;border:1px solid var(--bd);border-radius:10px;padding:11px 1
 .row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--bd)}
 .row:last-child{border:0}.mu{color:var(--mu);font-size:.85rem}.neg{color:var(--red)}.pos{color:var(--grn)}
 .x{padding:2px 8px;margin-left:6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.chips button{padding:8px 12px;border-radius:20px}
+.chips .on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.sec{width:100%;margin-top:8px}.lk{border:0;background:none;color:var(--mu);padding:8px 0;margin-top:4px;font-size:.85rem}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom)}
 nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 0;color:var(--mu)}nav .on{color:var(--ac);font-weight:700}
 [hidden]{display:none!important}
@@ -63,7 +66,7 @@ const fmt=(v,c)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:(c||"B
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const num=s=>{s=s.trim();return s.includes(",")?parseFloat(s.replace(/\./g,"").replace(",",".")):parseFloat(s)};
 const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra"};
-let S={hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"add",rt:false,lastAcc:null};
+let S={qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"add",rt:false,lastAcc:null};
 const show=v=>{["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);$("hb").hidden=v!=="app";};
 
 $("lf").onsubmit=async e=>{e.preventDefault();
@@ -74,6 +77,7 @@ sb.auth.onAuthStateChange(ev=>{if(ev==="SIGNED_OUT"){S.hid=null;show("login");}}
 async function loadHouseholds(){
   const {data:{user}}=await sb.auth.getUser();
   if(!user)return null;
+  S.uid=user.id;
   const {data}=await sb.from("household_members").select("household_id,households(name)").eq("user_id",user.id);
   S.hs=(data||[]).map(m=>({id:m.household_id,name:m.households?.name||"Família"}));
   return user;
@@ -88,7 +92,7 @@ async function start(prevIds){
   await pick(h.id,true);subscribe();
 }
 async function pick(id,keep){
-  S.hid=id;S.lastAcc=null;
+  S.hid=id;S.lastAcc=null;S.pre=null;
   try{localStorage.setItem("hid",id)}catch(e){}
   $("hb").textContent="⇄ "+S.hs.find(x=>x.id===id).name;
   show("app");await loadRef();go(keep&&S.tab!=="fam"?S.tab:"add");
@@ -97,7 +101,15 @@ async function loadRef(){
   const [a,c]=await Promise.all([
     sb.from("accounts").select("*").eq("household_id",S.hid).eq("is_active",true).order("name"),
     sb.from("categories").select("*").or(`household_id.eq.${S.hid},household_id.is.null`).eq("is_active",true).order("name")]);
-  S.accounts=a.data||[];S.cats=c.data||[];
+  S.accounts=a.data||[];S.cats=c.data||[];await loadQs();
+}
+const fa=v=>v==null?"":String(v).replace(".",",");
+async function loadQs(){
+  const [q,m]=await Promise.all([
+    sb.from("quick_entries").select("*").eq("household_id",S.hid).eq("is_active",true),
+    sb.from("quick_entry_accounts").select("quick_entry_id,account_id").eq("household_id",S.hid).eq("user_id",S.uid)]);
+  S.qs=(q.data||[]).sort((a,b)=>(b.is_favorite-a.is_favorite)||(b.use_count-a.use_count)||a.name.localeCompare(b.name));
+  S.qa=Object.fromEntries((m.data||[]).map(r=>[r.quick_entry_id,r.account_id]));
 }
 function subscribe(){if(S.rt)return;S.rt=true;
   sb.channel("rt").on("postgres_changes",{event:"*",schema:"public",table:"transactions"},()=>{if(S.tab==="list")viewList();}).subscribe();}
@@ -112,8 +124,8 @@ $("hb").onclick=()=>go("fam");
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>go(b.dataset.t));
 function go(t){S.tab=t;
-  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
-  ({add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam})[t]();}
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===(t==="qs"?"add":t)));
+  ({add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs})[t]();}
 
 function viewFam(){
   $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
@@ -133,16 +145,35 @@ function viewFam(){
 
 function viewAdd(){
   if(!S.accounts.length){$("main").innerHTML='<div class="card">Cadastre uma conta primeiro, na aba <b>Contas</b>.</div>';return;}
+  const P=S.pre||{};
   const cats=S.cats.filter(c=>c.kind===S.kind);
+  const qs=S.qs.filter(q=>q.kind===S.kind);
+  const accSel=P.acc||S.lastAcc;
   $("main").innerHTML=`<div class="card">
    <div class="seg"><button data-k="expense" class="${S.kind==="expense"?"on":""}">Despesa</button><button data-k="income" class="${S.kind==="income"?"on":""}">Receita</button></div>
-   <label>Valor<input id="v" inputmode="decimal" placeholder="0,00"></label>
-   <label>Categoria<select id="cat">${cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></label>
-   <label>Conta / cartão<select id="acc">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.lastAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
-   <label>Descrição<input id="desc"></label>
+   ${qs.length?`<div class="chips">${qs.map(q=>`<button data-q="${q.id}" class="${P.qid===q.id?"on":""}">${q.is_favorite?"⭐ ":""}${esc(q.name)}</button>`).join("")}</div>`:""}
+   <button class="lk" id="mq">⚙ Gerenciar atalhos</button>
+   <label>Valor<input id="v" inputmode="decimal" placeholder="0,00" value="${fa(P.amt)}"></label>
+   <label>Categoria<select id="cat">${cats.map(c=>`<option value="${c.id}" ${c.id===P.cat?"selected":""}>${esc(c.name)}</option>`).join("")}</select></label>
+   <label>Conta / cartão<select id="acc">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===accSel?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
+   <div id="pin"></div>
+   <label>Descrição<input id="desc" value="${esc(P.desc||"")}"></label>
    <label>Data<input id="dt" type="date" value="${today()}"></label>
-   <button class="pri" id="save">Salvar</button><p id="msg" class="mu"></p></div>`;
-  document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{S.kind=b.dataset.k;viewAdd();});
+   <button class="pri" id="save">Salvar</button><button class="sec" id="sq">⭐ Salvar como atalho</button><p id="msg" class="mu"></p></div>`;
+  document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{S.kind=b.dataset.k;S.pre=null;viewAdd();});
+  $("mq").onclick=()=>go("qs");
+  document.querySelectorAll("[data-q]").forEach(b=>b.onclick=()=>{
+    const q=S.qs.find(x=>x.id===b.dataset.q);
+    const ok=id=>S.accounts.some(a=>a.id===id)?id:null;
+    S.pre={qid:q.id,cat:q.category_id,acc:ok(S.qa[q.id])||ok(q.default_account_id)||S.lastAcc,desc:q.name,amt:q.default_amount};
+    viewAdd();$("v").focus();});
+  $("acc").onchange=()=>{
+    if(!P.qid||$("acc").value===S.qa[P.qid]){$("pin").innerHTML="";return;}
+    $("pin").innerHTML='<button class="lk" id="pb">📌 Usar esta conta como minha neste atalho</button>';
+    $("pb").onclick=async()=>{const acc=$("acc").value;
+      const {error}=await sb.from("quick_entry_accounts").upsert({quick_entry_id:P.qid,user_id:S.uid,household_id:S.hid,account_id:acc});
+      if(error)return $("msg").textContent="Erro: "+error.message;
+      S.qa[P.qid]=acc;P.acc=acc;$("pin").innerHTML="";$("msg").textContent="Conta fixada ✓";};};
   $("save").onclick=async()=>{
     const val=num($("v").value);
     if(!(val>0))return $("msg").textContent="Informe um valor válido.";
@@ -151,7 +182,51 @@ function viewAdd(){
       amount:S.kind==="expense"?-val:val,category_id:$("cat").value||null,description:$("desc").value||null,
       status:$("dt").value>today()?"planned":"posted"});
     if(error)return $("msg").textContent="Erro: "+error.message;
-    $("v").value="";$("desc").value="";$("msg").textContent="Salvo ✓";};
+    if(P.qid)await sb.from("quick_entries").update({use_count:(S.qs.find(x=>x.id===P.qid)?.use_count||0)+1,last_used_at:new Date().toISOString()}).eq("id",P.qid);
+    S.pre=null;await loadQs();viewAdd();$("msg").textContent="Salvo ✓";};
+  $("sq").onclick=async()=>{
+    const name=$("desc").value.trim();
+    if(!name)return $("msg").textContent="Preencha a descrição: ela será o nome do atalho.";
+    if(S.qs.some(q=>q.name.toLowerCase()===name.toLowerCase()))return $("msg").textContent="Já existe um atalho com esse nome.";
+    const acc=$("acc").value;
+    const {data,error}=await sb.from("quick_entries").insert({household_id:S.hid,name,kind:S.kind,category_id:$("cat").value||null,default_account_id:acc}).select("id").single();
+    if(error)return $("msg").textContent="Erro: "+error.message;
+    await sb.from("quick_entry_accounts").insert({quick_entry_id:data.id,user_id:S.uid,household_id:S.hid,account_id:acc});
+    const v=num($("v").value);
+    S.pre={qid:data.id,cat:$("cat").value,acc,desc:name,amt:v>0?v:null};
+    await loadQs();viewAdd();$("msg").textContent="Atalho criado ⭐";};
+}
+
+function viewQs(){
+  const an=id=>S.accounts.find(a=>a.id===id)?.name||"—";
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Atalhos</b>
+  ${S.qs.length?S.qs.map(q=>`<div class="row" style="display:block">
+   <div><b>${esc(q.name)}</b> <span class="mu">${q.kind==="expense"?"despesa":"receita"} · ${esc(S.cats.find(c=>c.id===q.category_id)?.name||"—")} · ${q.use_count}x</span></div>
+   <label>Minha conta neste atalho<select data-acc="${q.id}"><option value="">(padrão geral: ${esc(an(q.default_account_id))})</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.qa[q.id]?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   <label>Valor padrão (opcional)<input data-amt="${q.id}" inputmode="decimal" placeholder="0,00" value="${fa(q.default_amount)}"></label>
+   <div style="margin-top:8px"><button data-fav="${q.id}">${q.is_favorite?"⭐ Favorito":"☆ Favoritar"}</button> <button data-arc="${q.id}">Arquivar</button></div></div>`).join(""):'<p class="mu">Nenhum atalho ainda. Na tela Lançar, preencha um lançamento e toque em "Salvar como atalho".</p>'}</div>
+  <p id="qmsg" class="neg"></p>`;
+  const fail=e=>{if(e)$("qmsg").textContent="Erro: "+e.message;return !!e;};
+  $("bk").onclick=()=>go("add");
+  document.querySelectorAll("[data-acc]").forEach(el=>el.onchange=async()=>{
+    const id=el.dataset.acc;
+    const r=el.value?await sb.from("quick_entry_accounts").upsert({quick_entry_id:id,user_id:S.uid,household_id:S.hid,account_id:el.value})
+      :await sb.from("quick_entry_accounts").delete().eq("quick_entry_id",id).eq("user_id",S.uid);
+    if(fail(r.error))return;
+    if(el.value)S.qa[id]=el.value;else delete S.qa[id];});
+  document.querySelectorAll("[data-amt]").forEach(el=>el.onchange=async()=>{
+    const v=num(el.value),id=el.dataset.amt;
+    const {error}=await sb.from("quick_entries").update({default_amount:v>0?v:null}).eq("id",id);
+    if(fail(error))return;
+    S.qs.find(q=>q.id===id).default_amount=v>0?v:null;el.value=v>0?fa(v):"";});
+  document.querySelectorAll("[data-fav]").forEach(b=>b.onclick=async()=>{
+    const q=S.qs.find(x=>x.id===b.dataset.fav);
+    const {error}=await sb.from("quick_entries").update({is_favorite:!q.is_favorite}).eq("id",q.id);
+    if(fail(error))return;await loadQs();viewQs();});
+  document.querySelectorAll("[data-arc]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("Arquivar este atalho? Os lançamentos já feitos não mudam."))return;
+    const {error}=await sb.from("quick_entries").update({is_active:false}).eq("id",b.dataset.arc);
+    if(fail(error))return;await loadQs();viewQs();});
 }
 
 async function viewList(){
