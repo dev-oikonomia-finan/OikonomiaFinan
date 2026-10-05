@@ -25,6 +25,7 @@ button{font:inherit;border:1px solid var(--bd);border-radius:10px;padding:11px 1
 .x{padding:2px 8px;margin-left:6px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.chips button{padding:8px 12px;border-radius:20px}
 .chips .on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.ck{display:flex;align-items:center;gap:8px;color:var(--tx)!important;font-size:1rem!important}.ck input{width:auto;margin:0}
 .sec{width:100%;margin-top:8px}.lk{border:0;background:none;color:var(--mu);padding:8px 0;margin-top:4px;font-size:.85rem}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom)}
 nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 0;color:var(--mu)}nav .on{color:var(--ac);font-weight:700}
@@ -66,7 +67,7 @@ const fmt=(v,c)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:(c||"B
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const num=s=>{s=s.trim();return s.includes(",")?parseFloat(s.replace(/\./g,"").replace(",",".")):parseFloat(s)};
 const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra"};
-let S={qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"add",rt:false,lastAcc:null};
+let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"add",rt:false,lastAcc:null};
 const show=v=>{["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);$("hb").hidden=v!=="app";};
 
 $("lf").onsubmit=async e=>{e.preventDefault();
@@ -124,8 +125,8 @@ $("hb").onclick=()=>go("fam");
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>go(b.dataset.t));
 function go(t){S.tab=t;
-  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===(t==="qs"?"add":t)));
-  ({add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs})[t]();}
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===(t==="qs"?"add":t==="tr"?"acc":t)));
+  ({add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr})[t]();}
 
 function viewFam(){
   $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
@@ -153,7 +154,9 @@ function viewAdd(){
    <div class="seg"><button data-k="expense" class="${S.kind==="expense"?"on":""}">Despesa</button><button data-k="income" class="${S.kind==="income"?"on":""}">Receita</button></div>
    ${qs.length?`<div class="chips">${qs.map(q=>`<button data-q="${q.id}" class="${P.qid===q.id?"on":""}">${q.is_favorite?"⭐ ":""}${esc(q.name)}</button>`).join("")}</div>`:""}
    <button class="lk" id="mq">⚙ Gerenciar atalhos</button>
-   <label>Valor<input id="v" inputmode="decimal" placeholder="0,00" value="${fa(P.amt)}"></label>
+   <label><span id="vt">Valor</span><input id="v" inputmode="decimal" placeholder="0,00" value="${fa(P.amt)}"></label>
+   ${S.kind==="expense"?`<label class="ck"><input type="checkbox" id="pc"> Compra parcelada</label>
+   <div id="pcw" hidden><label>Nº de parcelas<input id="pn" type="number" min="2" max="48" value="2"></label><p id="pv" class="mu"></p></div>`:""}
    <label>Categoria<select id="cat">${cats.map(c=>`<option value="${c.id}" ${c.id===P.cat?"selected":""}>${esc(c.name)}</option>`).join("")}</select></label>
    <label>Conta / cartão<select id="acc">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===accSel?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
    <div id="pin"></div>
@@ -162,6 +165,10 @@ function viewAdd(){
    <button class="pri" id="save">Salvar</button><button class="sec" id="sq">⭐ Salvar como atalho</button><p id="msg" class="mu"></p></div>`;
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{S.kind=b.dataset.k;S.pre=null;viewAdd();});
   $("mq").onclick=()=>go("qs");
+  const pv=()=>{if(!$("pc"))return;const on=$("pc").checked;$("pcw").hidden=!on;$("vt").textContent=on?"Valor total":"Valor";
+    const n=parseInt($("pn").value),v=num($("v").value),c=S.accounts.find(a=>a.id===$("acc").value).currency.trim();
+    $("pv").textContent=on&&n>=2&&v>0?`${n}x de aprox. ${fmt(v/n,c)} (1ª parcela na data informada)`:"";};
+  ["pc","pn","v","acc"].forEach(i=>{if($(i)){$(i).oninput=pv;$(i).onchange=i==="acc"?$(i).onchange:pv;}});
   document.querySelectorAll("[data-q]").forEach(b=>b.onclick=()=>{
     const q=S.qs.find(x=>x.id===b.dataset.q);
     const ok=id=>S.accounts.some(a=>a.id===id)?id:null;
@@ -178,12 +185,16 @@ function viewAdd(){
     const val=num($("v").value);
     if(!(val>0))return $("msg").textContent="Informe um valor válido.";
     S.lastAcc=$("acc").value;
-    const {error}=await sb.from("transactions").insert({account_id:S.lastAcc,date:$("dt").value,
-      amount:S.kind==="expense"?-val:val,category_id:$("cat").value||null,description:$("desc").value||null,
-      status:$("dt").value>today()?"planned":"posted"});
-    if(error)return $("msg").textContent="Erro: "+error.message;
+    const n=$("pc")&&$("pc").checked?parseInt($("pn").value):0;
+    if(n&&!(n>=2&&n<=48))return $("msg").textContent="Informe de 2 a 48 parcelas.";
+    const r=n?await sb.rpc("create_installments",{p_account_id:S.lastAcc,p_first_date:$("dt").value,p_total:val,p_n:n,
+        p_category_id:$("cat").value||null,p_description:$("desc").value||null})
+      :await sb.from("transactions").insert({account_id:S.lastAcc,date:$("dt").value,
+        amount:S.kind==="expense"?-val:val,category_id:$("cat").value||null,description:$("desc").value||null,
+        status:$("dt").value>today()?"planned":"posted"});
+    if(r.error)return $("msg").textContent="Erro: "+r.error.message;
     if(P.qid)await sb.from("quick_entries").update({use_count:(S.qs.find(x=>x.id===P.qid)?.use_count||0)+1,last_used_at:new Date().toISOString()}).eq("id",P.qid);
-    S.pre=null;await loadQs();viewAdd();$("msg").textContent="Salvo ✓";};
+    S.pre=null;await loadQs();viewAdd();$("msg").textContent=n?`Parcelado em ${n}x ✓`:"Salvo ✓";};
   $("sq").onclick=async()=>{
     const name=$("desc").value.trim();
     if(!name)return $("msg").textContent="Preencha a descrição: ela será o nome do atalho.";
@@ -229,6 +240,38 @@ function viewQs(){
     if(fail(error))return;await loadQs();viewQs();});
 }
 
+function viewTr(){
+  const T=S.tr||{};
+  const nc=S.accounts.filter(a=>a.type!=="credit_card");
+  const from=T.from||(nc[0]||S.accounts[0]).id;
+  const to=T.to||(S.accounts.find(a=>a.id!==from)||S.accounts[0]).id;
+  const opt=sel=>S.accounts.map(a=>`<option value="${a.id}" ${a.id===sel?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("");
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>${T.pay?"Pagar fatura":"Transferir entre contas"}</b>
+   <label>De (origem)<select id="tf">${opt(from)}</select></label>
+   <label>Para (destino)<select id="tt">${opt(to)}</select></label>
+   <label>Valor<input id="tv" inputmode="decimal" placeholder="0,00" value="${fa(T.amt)}"></label>
+   <label id="tw" hidden>Valor recebido (na moeda do destino)<input id="tx" inputmode="decimal" placeholder="0,00"></label>
+   <label>Data<input id="td" type="date" value="${today()}"></label>
+   <label>Descrição<input id="tds" value="${esc(T.desc||"")}"></label>
+   <button class="pri" id="ts">Confirmar</button><p id="tm" class="neg"></p>
+   ${T.pay?'<p class="mu">O valor sugerido é a dívida total do cartão. Ajuste para o valor da fatura, se for diferente.</p>':""}</div>`;
+  const cur=id=>S.accounts.find(a=>a.id===id).currency.trim();
+  const sync=()=>{$("tw").hidden=cur($("tf").value)===cur($("tt").value);};
+  $("tf").onchange=sync;$("tt").onchange=sync;sync();
+  $("bk").onclick=()=>go("acc");
+  $("ts").onclick=async()=>{
+    const f=$("tf").value,t=$("tt").value,v=num($("tv").value);
+    if(f===t)return $("tm").textContent="Origem e destino devem ser diferentes.";
+    if(!(v>0))return $("tm").textContent="Informe um valor válido.";
+    const diff=cur(f)!==cur(t),vt=diff?num($("tx").value):null;
+    if(diff&&!(vt>0))return $("tm").textContent="Informe o valor recebido.";
+    $("ts").disabled=true;
+    const {error}=await sb.rpc("create_transfer",{p_from:f,p_to:t,p_amount:v,p_date:$("td").value,
+      p_description:$("tds").value.trim()||(T.pay?"Pagamento de fatura":"Transferência"),p_amount_to:vt});
+    if(error){$("ts").disabled=false;return $("tm").textContent="Erro: "+error.message;}
+    S.tr=null;go("acc");};
+}
+
 async function viewList(){
   const {data,error}=await sb.from("transactions")
     .select("id,date,amount,currency,description,status,installment_number,installment_total,categories(name),accounts!inner(name,household_id)")
@@ -237,7 +280,7 @@ async function viewList(){
   if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
   $("main").innerHTML=`<div class="card">${data.length?data.map(t=>`<div class="row"><div>
     <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
-    <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.status==="planned"?" · previsto":""}</div></div>
+    <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
     <div><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,t.currency)}</span><button class="x" data-del="${t.id}">✕</button></div></div>`).join(""):'<span class="mu">Nenhum lançamento ainda.</span>'}</div>`;
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
     if(confirm("Apagar este lançamento?")){await sb.from("transactions").delete().eq("id",b.dataset.del);viewList();}});
@@ -247,7 +290,7 @@ async function viewAcc(){
   const [{data:bal},{data:h}]=await Promise.all([
     sb.from("account_balances").select("*").eq("household_id",S.hid).order("name"),
     sb.from("households").select("invite_code").eq("id",S.hid).single()]);
-  $("main").innerHTML=`<div class="card"><b>Contas</b>${(bal||[]).map(a=>`<div class="row"><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div>${fmt(a.balance,a.currency)}</div></div>`).join("")||'<p class="mu">Nenhuma conta.</p>'}</div>
+  $("main").innerHTML=`<div class="card"><b>Contas</b> <button class="x" id="tb">🔁 Transferir</button>${(bal||[]).map(a=>`<div class="row"><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Pagar fatura</button></div>`:""}</div></div>`).join("")||'<p class="mu">Nenhuma conta.</p>'}</div>
   <div class="card"><b>Nova conta</b>
    <label>Nome<input id="an"></label>
    <label>Tipo<select id="at">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label>
@@ -262,6 +305,10 @@ async function viewAcc(){
     if(error)return $("amsg").textContent=error.message;
     await loadRef();viewAcc();};
   $("out").onclick=()=>sb.auth.signOut();
+  $("tb").onclick=()=>{S.tr=null;go("tr");};
+  document.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>{
+    const c=bal.find(x=>x.account_id===b.dataset.pay),d=Number(c.balance);
+    S.tr={pay:true,to:c.account_id,amt:d<0?-d:null,desc:"Pagamento de fatura "+c.name};go("tr");});
 }
 sb.auth.getSession().then(({data:{session}})=>session?start():show("login"));
 </script>
