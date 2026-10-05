@@ -67,7 +67,7 @@ const fmt=(v,c)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:(c||"B
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const num=s=>{s=s.trim();return s.includes(",")?parseFloat(s.replace(/\./g,"").replace(",",".")):parseFloat(s)};
 const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra"};
-let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"add",rt:false,lastAcc:null};
+let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"add",rt:false,lastAcc:null,ed:null,par:null};
 const show=v=>{["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);$("hb").hidden=v!=="app";};
 
 $("lf").onsubmit=async e=>{e.preventDefault();
@@ -93,10 +93,10 @@ async function start(prevIds){
   await pick(h.id,true);subscribe();
 }
 async function pick(id,keep){
-  S.hid=id;S.lastAcc=null;S.pre=null;
+  S.hid=id;S.lastAcc=null;S.pre=null;S.ed=null;S.par=null;
   try{localStorage.setItem("hid",id)}catch(e){}
   $("hb").textContent="⇄ "+S.hs.find(x=>x.id===id).name;
-  show("app");await loadRef();go(keep&&S.tab!=="fam"?S.tab:"add");
+  show("app");await loadRef();go(keep&&["add","list","acc"].includes(S.tab)?S.tab:"add");
 }
 async function loadRef(){
   const [a,c]=await Promise.all([
@@ -125,8 +125,8 @@ $("hb").onclick=()=>go("fam");
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>go(b.dataset.t));
 function go(t){S.tab=t;
-  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===(t==="qs"?"add":t==="tr"?"acc":t)));
-  ({add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr})[t]();}
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===(t==="qs"?"add":t==="tr"?"acc":(t==="ed"||t==="par")?"list":t)));
+  ({add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar})[t]();}
 
 function viewFam(){
   $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
@@ -162,7 +162,8 @@ function viewAdd(){
    <div id="pin"></div>
    <label>Descrição<input id="desc" value="${esc(P.desc||"")}"></label>
    <label>Data<input id="dt" type="date" value="${today()}"></label>
-   <button class="pri" id="save">Salvar</button><button class="sec" id="sq">⭐ Salvar como atalho</button><p id="msg" class="mu"></p></div>`;
+   ${P.qid?"":'<label class="ck"><input type="checkbox" id="fl"> ⭐ Salvar também como atalho</label>'}
+   <button class="pri" id="save">Salvar</button><p id="msg" class="mu"></p></div>`;
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{S.kind=b.dataset.k;S.pre=null;viewAdd();});
   $("mq").onclick=()=>go("qs");
   const pv=()=>{if(!$("pc"))return;const on=$("pc").checked;$("pcw").hidden=!on;$("vt").textContent=on?"Valor total":"Valor";
@@ -175,6 +176,7 @@ function viewAdd(){
     S.pre={qid:q.id,cat:q.category_id,acc:ok(S.qa[q.id])||ok(q.default_account_id)||S.lastAcc,desc:q.name,amt:q.default_amount};
     viewAdd();$("v").focus();});
   $("acc").onchange=()=>{
+    pv();
     if(!P.qid||$("acc").value===S.qa[P.qid]){$("pin").innerHTML="";return;}
     $("pin").innerHTML='<button class="lk" id="pb">📌 Usar esta conta como minha neste atalho</button>';
     $("pb").onclick=async()=>{const acc=$("acc").value;
@@ -184,28 +186,34 @@ function viewAdd(){
   $("save").onclick=async()=>{
     const val=num($("v").value);
     if(!(val>0))return $("msg").textContent="Informe um valor válido.";
-    S.lastAcc=$("acc").value;
+    if(!$("dt").value)return $("msg").textContent="Informe a data.";
     const n=$("pc")&&$("pc").checked?parseInt($("pn").value):0;
     if(n&&!(n>=2&&n<=48))return $("msg").textContent="Informe de 2 a 48 parcelas.";
-    const r=n?await sb.rpc("create_installments",{p_account_id:S.lastAcc,p_first_date:$("dt").value,p_total:val,p_n:n,
-        p_category_id:$("cat").value||null,p_description:$("desc").value||null})
-      :await sb.from("transactions").insert({account_id:S.lastAcc,date:$("dt").value,
-        amount:S.kind==="expense"?-val:val,category_id:$("cat").value||null,description:$("desc").value||null,
-        status:$("dt").value>today()?"planned":"posted"});
-    if(r.error)return $("msg").textContent="Erro: "+r.error.message;
+    const mkq=!!($("fl")&&$("fl").checked),qname=$("desc").value.trim();
+    if(mkq){
+      if(!qname)return $("msg").textContent="Para salvar como atalho, preencha a descrição: ela será o nome do atalho.";
+      if(S.qs.some(q=>q.name.toLowerCase()===qname.toLowerCase()))return $("msg").textContent="Já existe um atalho com esse nome. Mude a descrição ou desmarque a opção de atalho.";
+    }
+    S.lastAcc=$("acc").value;
+    const cat=$("cat").value||null,dt=$("dt").value;
+    $("save").disabled=true;
+    const r=n?await sb.rpc("create_installments",{p_account_id:S.lastAcc,p_first_date:dt,p_total:val,p_n:n,
+        p_category_id:cat,p_description:$("desc").value||null})
+      :await sb.from("transactions").insert({account_id:S.lastAcc,date:dt,
+        amount:S.kind==="expense"?-val:val,category_id:cat,description:$("desc").value||null,
+        status:dt>today()?"planned":"posted"});
+    if(r.error){$("save").disabled=false;return $("msg").textContent="Erro: "+r.error.message;}
+    let extra="";
+    if(mkq){
+      const q=await sb.from("quick_entries").insert({household_id:S.hid,name:qname,kind:S.kind,category_id:cat,
+        default_account_id:S.lastAcc,use_count:1,last_used_at:new Date().toISOString()}).select("id").single();
+      if(q.error)extra=" (o atalho NÃO foi criado: "+q.error.message+")";
+      else{
+        const m=await sb.from("quick_entry_accounts").insert({quick_entry_id:q.data.id,user_id:S.uid,household_id:S.hid,account_id:S.lastAcc});
+        extra=m.error?" (atalho criado, mas sem fixar sua conta: "+m.error.message+")":" · atalho criado ⭐";}
+    }
     if(P.qid)await sb.from("quick_entries").update({use_count:(S.qs.find(x=>x.id===P.qid)?.use_count||0)+1,last_used_at:new Date().toISOString()}).eq("id",P.qid);
-    S.pre=null;await loadQs();viewAdd();$("msg").textContent=n?`Parcelado em ${n}x ✓`:"Salvo ✓";};
-  $("sq").onclick=async()=>{
-    const name=$("desc").value.trim();
-    if(!name)return $("msg").textContent="Preencha a descrição: ela será o nome do atalho.";
-    if(S.qs.some(q=>q.name.toLowerCase()===name.toLowerCase()))return $("msg").textContent="Já existe um atalho com esse nome.";
-    const acc=$("acc").value;
-    const {data,error}=await sb.from("quick_entries").insert({household_id:S.hid,name,kind:S.kind,category_id:$("cat").value||null,default_account_id:acc}).select("id").single();
-    if(error)return $("msg").textContent="Erro: "+error.message;
-    await sb.from("quick_entry_accounts").insert({quick_entry_id:data.id,user_id:S.uid,household_id:S.hid,account_id:acc});
-    const v=num($("v").value);
-    S.pre={qid:data.id,cat:$("cat").value,acc,desc:name,amt:v>0?v:null};
-    await loadQs();viewAdd();$("msg").textContent="Atalho criado ⭐";};
+    S.pre=null;await loadQs();viewAdd();$("msg").textContent=(n?`Parcelado em ${n}x ✓`:"Salvo ✓")+extra;};
 }
 
 function viewQs(){
@@ -274,16 +282,24 @@ function viewTr(){
 
 async function viewList(){
   const {data,error}=await sb.from("transactions")
-    .select("id,date,amount,currency,description,status,installment_number,installment_total,categories(name),accounts!inner(name,household_id)")
+    .select("id,date,amount,currency,description,status,installment_number,installment_total,installment_group_id,transfer_group_id,categories(name),accounts!inner(name,household_id)")
     .eq("accounts.household_id",S.hid)
     .order("date",{ascending:false}).order("created_at",{ascending:false}).limit(50);
   if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
   $("main").innerHTML=`<div class="card">${data.length?data.map(t=>`<div class="row"><div>
     <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
     <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
-    <div><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,t.currency)}</span><button class="x" data-del="${t.id}">✕</button></div></div>`).join(""):'<span class="mu">Nenhum lançamento ainda.</span>'}</div>`;
+    <div style="text-align:right;white-space:nowrap"><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,t.currency)}</span><button class="x" data-ed="${t.id}">✏️</button><button class="x" data-del="${t.id}">✕</button></div></div>`).join(""):'<span class="mu">Nenhum lançamento ainda.</span>'}</div>`;
+  document.querySelectorAll("[data-ed]").forEach(b=>b.onclick=()=>{S.ed=b.dataset.ed;go("ed");});
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
-    if(confirm("Apagar este lançamento?")){await sb.from("transactions").delete().eq("id",b.dataset.del);viewList();}});
+    const t=data.find(x=>x.id===b.dataset.del);
+    const txt=t.transfer_group_id?"Apagar a transferência inteira (as duas pontas)?"
+      :t.installment_group_id?"Apagar SÓ esta parcela? Para apagar a compra inteira, use ✏️ e depois \"Editar todas as parcelas desta compra\".":"Apagar este lançamento?";
+    if(!confirm(txt))return;
+    const q=sb.from("transactions").delete();
+    const {error}=await(t.transfer_group_id?q.eq("transfer_group_id",t.transfer_group_id):q.eq("id",t.id));
+    if(error)alert("Erro: "+error.message);
+    viewList();});
 }
 
 async function viewAcc(){
@@ -310,6 +326,105 @@ async function viewAcc(){
     const c=bal.find(x=>x.account_id===b.dataset.pay),d=Number(c.balance);
     S.tr={pay:true,to:c.account_id,amt:d<0?-d:null,desc:"Pagamento de fatura "+c.name};go("tr");});
 }
+const f2=v=>Math.abs(Number(v)).toFixed(2).replace(".",",");
+
+async function viewEdit(){
+  const {data:t,error}=await sb.from("transactions")
+    .select("id,account_id,date,amount,currency,description,category_id,status,transfer_group_id,installment_group_id,installment_number,installment_total,accounts(name)")
+    .eq("id",S.ed).single();
+  if(error||!t){alert("Lançamento não encontrado.");return go("list");}
+  drawEdit(t,{kind:t.amount<0?"expense":"income",val:f2(t.amount),date:t.date,cat:t.category_id||"",acc:t.account_id,desc:t.description||"",all:false});
+}
+function drawEdit(t,D){
+  const tr=!!t.transfer_group_id,pa=!!t.installment_group_id,cur=t.currency.trim();
+  const cats=S.cats.filter(c=>c.kind===D.kind);
+  const accs=S.accounts.filter(a=>a.currency.trim()===cur).map(a=>({id:a.id,name:a.name}));
+  if(!accs.some(a=>a.id===t.account_id))accs.push({id:t.account_id,name:t.accounts?.name||"Conta"});
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Editar lançamento</b>
+   ${tr?'<p class="mu">Transferência: só data e descrição podem ser editadas, e a mudança vale para as duas pontas. Para corrigir valor ou contas, apague e refaça a transferência.</p>'
+     :pa?`<p class="mu">Parcela ${t.installment_number}/${t.installment_total}. A conta vale para a compra toda. Alterar o valor muda o total da compra.</p>`:""}
+   ${tr||pa?"":`<div class="seg"><button data-k="expense" class="${D.kind==="expense"?"on":""}">Despesa</button><button data-k="income" class="${D.kind==="income"?"on":""}">Receita</button></div>`}
+   <label>Valor (${esc(cur)})<input id="ev" inputmode="decimal" value="${esc(D.val)}" ${tr?"disabled":""}></label>
+   ${tr?"":`<label>Categoria<select id="ec"><option value="">(sem categoria)</option>${cats.map(c=>`<option value="${c.id}" ${c.id===D.cat?"selected":""}>${esc(c.name)}</option>`).join("")}</select></label>`}
+   <label>Conta / cartão<select id="ea" ${tr||pa?"disabled":""}>${accs.map(a=>`<option value="${a.id}" ${a.id===D.acc?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   <label>Descrição<input id="edsc" value="${esc(D.desc)}"></label>
+   <label>Data<input id="edt" type="date" value="${esc(D.date)}"></label>
+   ${pa?`<label class="ck"><input type="checkbox" id="eall" ${D.all?"checked":""}> Aplicar categoria e descrição a todas as parcelas desta compra</label>
+     <button class="lk" id="epar">Editar todas as parcelas desta compra</button>`:""}
+   <button class="pri" id="es">Salvar alterações</button><p id="em" class="neg"></p></div>`;
+  const grab=()=>{D.val=$("ev").value;D.date=$("edt").value;D.desc=$("edsc").value;
+    if($("ec"))D.cat=$("ec").value;if($("ea"))D.acc=$("ea").value;if($("eall"))D.all=$("eall").checked;};
+  $("bk").onclick=()=>go("list");
+  document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{grab();D.kind=b.dataset.k;D.cat="";drawEdit(t,D);});
+  if($("epar"))$("epar").onclick=()=>{S.par=t.installment_group_id;go("par");};
+  $("es").onclick=async()=>{
+    const v=num($("ev").value),date=$("edt").value;
+    if(!tr&&!(v>0))return $("em").textContent="Informe um valor válido.";
+    if(!date)return $("em").textContent="Informe a data.";
+    const st=date>today()?"planned":"posted",desc=$("edsc").value.trim()||null;
+    $("es").disabled=true;
+    let r;
+    if(tr)r=await sb.from("transactions").update({date,description:desc,status:st}).eq("transfer_group_id",t.transfer_group_id);
+    else{
+      const u={amount:D.kind==="expense"?-v:v,date,category_id:$("ec").value||null,description:desc,status:st};
+      if(!pa)u.account_id=$("ea").value;
+      r=await sb.from("transactions").update(u).eq("id",t.id);
+      if(!r.error&&pa&&$("eall").checked)
+        r=await sb.from("transactions").update({category_id:u.category_id,description:desc}).eq("installment_group_id",t.installment_group_id);
+    }
+    if(r.error){$("es").disabled=false;return $("em").textContent="Erro: "+r.error.message;}
+    S.ed=null;go("list");};
+}
+
+async function viewPar(msg){
+  const {data,error}=await sb.from("transactions")
+    .select("id,date,amount,currency,description,status,installment_number,installment_total,categories(name),accounts(name)")
+    .eq("installment_group_id",S.par).order("installment_number");
+  if(error||!data||!data.length){S.par=null;return go("list");}
+  const cur=data[0].currency.trim(),sign=data[0].amount<0?-1:1;
+  const cents=t=>Math.round(Math.abs(t.amount)*100);
+  const orig=data.reduce((s,t)=>s+cents(t),0);
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Parcelas da compra</b>
+   <div class="mu">${esc(data[0].description||"Sem descrição")} · ${esc(data[0].categories?.name||"—")} · ${esc(data[0].accounts?.name)}</div>
+   ${data.map(t=>`<div class="row" style="display:block"><b>${t.installment_number}/${t.installment_total}</b>
+     <span class="mu">${t.status==="planned"&&t.date>today()?"previsto":"lançada"}</span>
+     <div style="display:flex;gap:8px"><input type="date" data-pd="${t.id}" value="${t.date}"><input data-pv="${t.id}" inputmode="decimal" value="${f2(t.amount)}"></div></div>`).join("")}
+   <p id="ps" class="mu"></p>
+   <button class="sec" id="pj">Ajustar última parcela para fechar o total original</button>
+   <button class="pri" id="psv">Salvar parcelas</button>
+   <button class="sec neg" id="pdel">Apagar compra inteira</button>
+   <p id="pm" class="neg">${esc(msg||"")}</p>
+   <p class="mu">Total original = soma das parcelas ao abrir esta tela (${fmt(orig/100,cur)}).</p></div>`;
+  const vals=()=>[...document.querySelectorAll("[data-pv]")].map(el=>Math.round(num(el.value)*100));
+  const calc=()=>{const v=vals();if(v.some(x=>!(x>0))){$("ps").textContent="Há valor inválido.";return;}
+    const s=v.reduce((a,b)=>a+b,0),d=s-orig;
+    $("ps").textContent=`Soma ${fmt(s/100,cur)} · original ${fmt(orig/100,cur)} · `+(d===0?"total confere ✓":`diferença ${d>0?"+":"-"}${fmt(Math.abs(d)/100,cur)}`);};
+  document.querySelectorAll("[data-pv]").forEach(el=>el.oninput=calc);calc();
+  $("bk").onclick=()=>go("list");
+  $("pj").onclick=()=>{const els=[...document.querySelectorAll("[data-pv]")],v=vals();
+    const resto=orig-v.slice(0,-1).reduce((a,b)=>a+b,0);
+    if(!(resto>0))return $("pm").textContent="Não é possível: as outras parcelas já passam do total original.";
+    els[els.length-1].value=f2(resto/100);$("pm").textContent="";calc();};
+  $("psv").onclick=async()=>{
+    const v=vals();
+    if(v.some(x=>!(x>0)))return $("pm").textContent="Informe valores válidos em todas as parcelas.";
+    const ds=[...document.querySelectorAll("[data-pd]")].map(el=>el.value);
+    if(ds.some(d=>!d))return $("pm").textContent="Informe a data de todas as parcelas.";
+    $("psv").disabled=true;let n=0;
+    for(let i=0;i<data.length;i++){
+      const t=data[i];
+      if(v[i]===cents(t)&&ds[i]===t.date)continue;
+      const {error}=await sb.from("transactions").update({amount:sign*v[i]/100,date:ds[i],status:ds[i]>today()?"planned":"posted"}).eq("id",t.id);
+      if(error)return viewPar(`Erro na parcela ${t.installment_number}/${t.installment_total}: ${error.message}. A tela mostra o que está salvo.`);
+      n++;}
+    viewPar(n?`${n} parcela(s) salva(s) ✓`:"Nada foi alterado.");};
+  $("pdel").onclick=async()=>{
+    if(!confirm(`Apagar a compra inteira (${data.length} parcelas)? Isso não pode ser desfeito.`))return;
+    const {error}=await sb.from("transactions").delete().eq("installment_group_id",S.par);
+    if(error)return $("pm").textContent="Erro: "+error.message;
+    S.par=null;go("list");};
+}
+
 sb.auth.getSession().then(({data:{session}})=>session?start():show("login"));
 </script>
 </body>
