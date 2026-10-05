@@ -7,8 +7,8 @@
 <link rel="manifest" href="manifest.json">
 <title>Oikonomia-Finan</title>
 <style>
-:root{--bg:#f6f7f8;--card:#fff;--tx:#1a1d1f;--mu:#6b7378;--ac:#0f766e;--red:#b42318;--grn:#067647;--bd:#e3e6e8}
-@media(prefers-color-scheme:dark){:root{--bg:#111415;--card:#1b1f21;--tx:#eceff0;--mu:#99a2a7;--ac:#2dd4bf;--red:#f97066;--grn:#47cd89;--bd:#2c3236}}
+:root{--bg:#f6f7f8;--card:#fff;--tx:#1a1d1f;--mu:#6b7378;--ac:#0f766e;--red:#b42318;--grn:#067647;--bd:#e3e6e8;--yel:#b54708}
+@media(prefers-color-scheme:dark){:root{--bg:#111415;--card:#1b1f21;--tx:#eceff0;--mu:#99a2a7;--ac:#2dd4bf;--red:#f97066;--grn:#47cd89;--bd:#2c3236;--yel:#fec84b}}
 *{box-sizing:border-box}
 body{margin:0;font:16px system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:env(safe-area-inset-top) 0 80px}
 h1{font-size:1.2rem;margin:0;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px}
@@ -19,7 +19,7 @@ label{display:block;font-size:.8rem;color:var(--mu);margin-top:10px}
 input,select{width:100%;font:inherit;padding:11px;margin-top:4px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx)}
 button{font:inherit;border:1px solid var(--bd);border-radius:10px;padding:11px 14px;background:var(--card);color:var(--tx)}
 .pri{width:100%;margin-top:14px;background:var(--ac);color:#fff;border:0;font-weight:600}
-.seg{display:flex;gap:8px}.seg button{flex:1}.seg .on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.seg{display:flex;gap:8px}.seg button{flex:1;min-width:0;padding:11px 4px;font-size:.92rem}.seg .on{background:var(--ac);color:#fff;border-color:var(--ac)}
 .row{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--bd)}
 .row:last-child{border:0}.mu{color:var(--mu);font-size:.85rem}.neg{color:var(--red)}.pos{color:var(--grn)}
 .x{padding:2px 8px;margin-left:6px}
@@ -28,7 +28,9 @@ button{font:inherit;border:1px solid var(--bd);border-radius:10px;padding:11px 1
 .ck{display:flex;align-items:center;gap:8px;color:var(--tx)!important;font-size:1rem!important}.ck input{width:auto;margin:0}
 .sec{width:100%;margin-top:8px}.lk{border:0;background:none;color:var(--mu);padding:8px 0;margin-top:4px;font-size:.85rem}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom)}
-nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 0;color:var(--mu)}nav .on{color:var(--ac);font-weight:700}
+nav button{flex:1;border:0;border-radius:0;background:none;padding:8px 0;font-size:.72rem;color:var(--mu)}nav button span{display:block;font-size:1.25rem;line-height:1.3}nav .on{color:var(--ac);font-weight:700}
+.bar{height:8px;background:var(--bd);border-radius:6px;overflow:hidden;margin:6px 0}.bar i{display:block;height:100%}
+details summary{padding:8px 0;color:var(--mu)}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -54,7 +56,7 @@ nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 0;color:
 </div>
 
 <div id="app" hidden><main id="main"></main>
-<nav><button data-t="add">➕ Lançar</button><button data-t="list">📋 Lançamentos</button><button data-t="acc">🏦 Contas</button></nav></div>
+<nav><button data-t="dash"><span>📊</span>Painel</button><button data-t="add"><span>➕</span>Lançar</button><button data-t="list"><span>📋</span>Lançamentos</button><button data-t="acc"><span>🏦</span>Contas</button></nav></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -67,7 +69,7 @@ const fmt=(v,c)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:(c||"B
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const num=s=>{s=s.trim();return s.includes(",")?parseFloat(s.replace(/\./g,"").replace(",",".")):parseFloat(s)};
 const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra"};
-let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"add",rt:false,lastAcc:null,ed:null,par:null};
+let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"dash",rt:false,lastAcc:null,ed:null,par:null,fAcc:null,lim:50,trFrom:"acc",catsAll:[],ce:null,me:null,catFrom:"acc",cmsg:""};
 const show=v=>{["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);$("hb").hidden=v!=="app";};
 
 $("lf").onsubmit=async e=>{e.preventDefault();
@@ -93,16 +95,31 @@ async function start(prevIds){
   await pick(h.id,true);subscribe();
 }
 async function pick(id,keep){
-  S.hid=id;S.lastAcc=null;S.pre=null;S.ed=null;S.par=null;
+  S.hid=id;S.lastAcc=null;S.pre=null;S.ed=null;S.par=null;S.fAcc=null;S.lim=50;
   try{localStorage.setItem("hid",id)}catch(e){}
   $("hb").textContent="⇄ "+S.hs.find(x=>x.id===id).name;
-  show("app");await loadRef();go(keep&&["add","list","acc"].includes(S.tab)?S.tab:"add");
+  show("app");await loadRef();go(keep&&["dash","add","list","acc"].includes(S.tab)?S.tab:"dash");
 }
 async function loadRef(){
-  const [a,c]=await Promise.all([
-    sb.from("accounts").select("*").eq("household_id",S.hid).eq("is_active",true).order("name"),
-    sb.from("categories").select("*").or(`household_id.eq.${S.hid},household_id.is.null`).eq("is_active",true).order("name")]);
-  S.accounts=a.data||[];S.cats=c.data||[];await loadQs();
+  const [a]=await Promise.all([
+    sb.from("accounts").select("*").eq("household_id",S.hid).eq("is_active",true).order("name"),loadCats()]);
+  S.accounts=a.data||[];await loadQs();
+}
+async function loadCats(){
+  const {data}=await sb.from("categories").select("*").eq("household_id",S.hid).order("name");
+  S.catsAll=data||[];S.cats=S.catsAll.filter(c=>c.is_active);
+}
+const catById=id=>S.catsAll.find(c=>c.id===id);
+const catLabel=c=>{const p=c.parent_id&&catById(c.parent_id);return p?p.name+" › "+c.name:c.name;};
+const catName=id=>{const c=catById(id);return c?catLabel(c):"—";};
+const catSort=list=>list.slice().sort((a,b)=>{
+  const pa=a.parent_id&&catById(a.parent_id),pb=b.parent_id&&catById(b.parent_id);
+  return (pa?pa.name:a.name).localeCompare(pb?pb.name:b.name,"pt-BR")||((pa?1:0)-(pb?1:0))||a.name.localeCompare(b.name,"pt-BR");});
+function catOpts(kind,sel,empty){
+  let list=S.cats.filter(c=>c.kind===kind);
+  const cur=sel&&catById(sel);
+  if(cur&&cur.kind===kind&&!cur.is_active)list=list.concat(cur);
+  return (empty?'<option value="">(sem categoria)</option>':"")+catSort(list).map(c=>`<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(catLabel(c))}${c.is_active?"":" (arquivada)"}</option>`).join("");
 }
 const fa=v=>v==null?"":String(v).replace(".",",");
 async function loadQs(){
@@ -123,10 +140,11 @@ $("mk").onclick=()=>onb("create_household",{p_name:$("hn").value,p_display_name:
 $("jn").onclick=()=>onb("join_household",{p_code:$("cd").value.trim(),p_display_name:$("mn2").value},"omsg");
 $("hb").onclick=()=>go("fam");
 
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>go(b.dataset.t));
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{if(b.dataset.t==="list")S.lim=50;go(b.dataset.t);});
+const NAVOF=t=>({qs:"add",ed:"list",par:"list",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc"})[t]||t;
 function go(t){S.tab=t;
-  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===(t==="qs"?"add":t==="tr"?"acc":(t==="ed"||t==="par")?"list":t)));
-  ({add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar})[t]();}
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===NAVOF(t)));
+  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,cat:viewCat,cated:viewCatEdit,metas:viewMetas})[t]();}
 
 function viewFam(){
   $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
@@ -148,23 +166,26 @@ function viewAdd(){
   if(!S.accounts.length){$("main").innerHTML='<div class="card">Cadastre uma conta primeiro, na aba <b>Contas</b>.</div>';return;}
   const P=S.pre||{};
   const cats=S.cats.filter(c=>c.kind===S.kind);
+  const badCat=!!P.cat&&!cats.some(c=>c.id===P.cat);
   const qs=S.qs.filter(q=>q.kind===S.kind);
   const accSel=P.acc||S.lastAcc;
   $("main").innerHTML=`<div class="card">
-   <div class="seg"><button data-k="expense" class="${S.kind==="expense"?"on":""}">Despesa</button><button data-k="income" class="${S.kind==="income"?"on":""}">Receita</button></div>
+   <div class="seg"><button data-k="expense" class="${S.kind==="expense"?"on":""}">Despesa</button><button data-k="income" class="${S.kind==="income"?"on":""}">Receita</button><button data-k="tr">Transferência</button></div>
    ${qs.length?`<div class="chips">${qs.map(q=>`<button data-q="${q.id}" class="${P.qid===q.id?"on":""}">${q.is_favorite?"⭐ ":""}${esc(q.name)}</button>`).join("")}</div>`:""}
    <button class="lk" id="mq">⚙ Gerenciar atalhos</button>
    <label><span id="vt">Valor</span><input id="v" inputmode="decimal" placeholder="0,00" value="${fa(P.amt)}"></label>
    ${S.kind==="expense"?`<label class="ck"><input type="checkbox" id="pc"> Compra parcelada</label>
    <div id="pcw" hidden><label>Nº de parcelas<input id="pn" type="number" min="2" max="48" value="2"></label><p id="pv" class="mu"></p></div>`:""}
-   <label>Categoria<select id="cat">${cats.map(c=>`<option value="${c.id}" ${c.id===P.cat?"selected":""}>${esc(c.name)}</option>`).join("")}</select></label>
+   <label>Categoria<select id="cat">${badCat?'<option value="" selected>Escolha a categoria</option>':""}${catOpts(S.kind,badCat?null:P.cat)}</select></label>
    <label>Conta / cartão<select id="acc">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===accSel?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
    <div id="pin"></div>
    <label>Descrição<input id="desc" value="${esc(P.desc||"")}"></label>
-   <label>Data<input id="dt" type="date" value="${today()}"></label>
+   <label>Data<input id="dt" type="date" value="${esc(P.dt||today())}"></label>
    ${P.qid?"":'<label class="ck"><input type="checkbox" id="fl"> ⭐ Salvar também como atalho</label>'}
    <button class="pri" id="save">Salvar</button><p id="msg" class="mu"></p></div>`;
-  document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{S.kind=b.dataset.k;S.pre=null;viewAdd();});
+  document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{
+    if(b.dataset.k==="tr"){S.tr=null;S.trFrom="add";return go("tr");}
+    S.kind=b.dataset.k;S.pre=null;viewAdd();});
   $("mq").onclick=()=>go("qs");
   const pv=()=>{if(!$("pc"))return;const on=$("pc").checked;$("pcw").hidden=!on;$("vt").textContent=on?"Valor total":"Valor";
     const n=parseInt($("pn").value),v=num($("v").value),c=S.accounts.find(a=>a.id===$("acc").value).currency.trim();
@@ -172,6 +193,10 @@ function viewAdd(){
   ["pc","pn","v","acc"].forEach(i=>{if($(i)){$(i).oninput=pv;$(i).onchange=i==="acc"?$(i).onchange:pv;}});
   document.querySelectorAll("[data-q]").forEach(b=>b.onclick=()=>{
     const q=S.qs.find(x=>x.id===b.dataset.q);
+    if(P.qid===q.id){
+      const d=$("desc").value;
+      S.pre={cat:$("cat").value,acc:$("acc").value,amt:$("v").value,desc:d.trim()===q.name?"":d,dt:$("dt").value};
+      viewAdd();$("desc").focus();return;}
     const ok=id=>S.accounts.some(a=>a.id===id)?id:null;
     S.pre={qid:q.id,cat:q.category_id,acc:ok(S.qa[q.id])||ok(q.default_account_id)||S.lastAcc,desc:q.name,amt:q.default_amount};
     viewAdd();$("v").focus();});
@@ -186,6 +211,7 @@ function viewAdd(){
   $("save").onclick=async()=>{
     const val=num($("v").value);
     if(!(val>0))return $("msg").textContent="Informe um valor válido.";
+    if($("cat").value===""&&cats.length)return $("msg").textContent="Escolha a categoria.";
     if(!$("dt").value)return $("msg").textContent="Informe a data.";
     const n=$("pc")&&$("pc").checked?parseInt($("pn").value):0;
     if(n&&!(n>=2&&n<=48))return $("msg").textContent="Informe de 2 a 48 parcelas.";
@@ -220,7 +246,7 @@ function viewQs(){
   const an=id=>S.accounts.find(a=>a.id===id)?.name||"—";
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Atalhos</b>
   ${S.qs.length?S.qs.map(q=>`<div class="row" style="display:block">
-   <div><b>${esc(q.name)}</b> <span class="mu">${q.kind==="expense"?"despesa":"receita"} · ${esc(S.cats.find(c=>c.id===q.category_id)?.name||"—")} · ${q.use_count}x</span></div>
+   <div><b>${esc(q.name)}</b> <span class="mu">${q.kind==="expense"?"despesa":"receita"} · ${esc(catName(q.category_id))} · ${q.use_count}x</span></div>
    <label>Minha conta neste atalho<select data-acc="${q.id}"><option value="">(padrão geral: ${esc(an(q.default_account_id))})</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.qa[q.id]?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
    <label>Valor padrão (opcional)<input data-amt="${q.id}" inputmode="decimal" placeholder="0,00" value="${fa(q.default_amount)}"></label>
    <div style="margin-top:8px"><button data-fav="${q.id}">${q.is_favorite?"⭐ Favorito":"☆ Favoritar"}</button> <button data-arc="${q.id}">Arquivar</button></div></div>`).join(""):'<p class="mu">Nenhum atalho ainda. Na tela Lançar, preencha um lançamento e toque em "Salvar como atalho".</p>'}</div>
@@ -266,7 +292,7 @@ function viewTr(){
   const cur=id=>S.accounts.find(a=>a.id===id).currency.trim();
   const sync=()=>{$("tw").hidden=cur($("tf").value)===cur($("tt").value);};
   $("tf").onchange=sync;$("tt").onchange=sync;sync();
-  $("bk").onclick=()=>go("acc");
+  $("bk").onclick=()=>go(S.trFrom||"acc");
   $("ts").onclick=async()=>{
     const f=$("tf").value,t=$("tt").value,v=num($("tv").value);
     if(f===t)return $("tm").textContent="Origem e destino devem ser diferentes.";
@@ -277,19 +303,29 @@ function viewTr(){
     const {error}=await sb.rpc("create_transfer",{p_from:f,p_to:t,p_amount:v,p_date:$("td").value,
       p_description:$("tds").value.trim()||(T.pay?"Pagamento de fatura":"Transferência"),p_amount_to:vt});
     if(error){$("ts").disabled=false;return $("tm").textContent="Erro: "+error.message;}
-    S.tr=null;go("acc");};
+    S.tr=null;go(S.trFrom||"acc");};
 }
 
 async function viewList(){
-  const {data,error}=await sb.from("transactions")
+  if(S.fAcc&&!S.accounts.some(a=>a.id===S.fAcc))S.fAcc=null;
+  let q=sb.from("transactions")
     .select("id,date,amount,currency,description,status,installment_number,installment_total,installment_group_id,transfer_group_id,categories(name),accounts!inner(name,household_id)")
-    .eq("accounts.household_id",S.hid)
-    .order("date",{ascending:false}).order("created_at",{ascending:false}).limit(50);
+    .eq("accounts.household_id",S.hid);
+  if(S.fAcc)q=q.eq("account_id",S.fAcc);
+  const [{data,error},bl]=await Promise.all([
+    q.order("date",{ascending:false}).order("created_at",{ascending:false}).limit(S.lim),
+    S.fAcc?sb.from("account_balances").select("balance,currency").eq("account_id",S.fAcc).maybeSingle():Promise.resolve({data:null})]);
   if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
-  $("main").innerHTML=`<div class="card">${data.length?data.map(t=>`<div class="row"><div>
+  const bal=bl.data;
+  $("main").innerHTML=`<div class="card"><label style="margin-top:0">Conta<select id="lfa"><option value="">Todas as contas</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.fAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
+    ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}</div>
+  <div class="card">${data.length?data.map(t=>`<div class="row"><div>
     <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
     <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
-    <div style="text-align:right;white-space:nowrap"><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,t.currency)}</span><button class="x" data-ed="${t.id}">✏️</button><button class="x" data-del="${t.id}">✕</button></div></div>`).join(""):'<span class="mu">Nenhum lançamento ainda.</span>'}</div>`;
+    <div style="text-align:right;white-space:nowrap"><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,t.currency)}</span><button class="x" data-ed="${t.id}">✏️</button><button class="x" data-del="${t.id}">✕</button></div></div>`).join(""):`<span class="mu">${S.fAcc?"Nenhum lançamento nesta conta.":"Nenhum lançamento ainda."}</span>`}</div>
+  ${data.length>=S.lim?'<button class="sec" id="lm">Carregar mais</button>':""}`;
+  if($("lm"))$("lm").onclick=async()=>{const y=window.scrollY;S.lim+=50;await viewList();window.scrollTo(0,y);};
+  $("lfa").onchange=()=>{S.fAcc=$("lfa").value||null;S.lim=50;viewList();};
   document.querySelectorAll("[data-ed]").forEach(b=>b.onclick=()=>{S.ed=b.dataset.ed;go("ed");});
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
     const t=data.find(x=>x.id===b.dataset.del);
@@ -314,17 +350,19 @@ async function viewAcc(){
    <label>Cartão: dia de fechamento<input id="acl" type="number" min="1" max="31"></label>
    <label>Cartão: dia de vencimento<input id="adu" type="number" min="1" max="31"></label>
    <button class="pri" id="ads">Adicionar</button><p id="amsg" class="neg"></p></div>
+  <div class="card"><button class="sec" id="gc" style="margin-top:0">🏷 Gerenciar categorias</button></div>
   <div class="card mu">Código de convite da família: <b>${esc(h?.invite_code)}</b><br><br><button id="out">Sair</button></div>`;
   $("ads").onclick=async()=>{
     const {error}=await sb.from("accounts").insert({household_id:S.hid,name:$("an").value,type:$("at").value,
       currency:$("ac").value.toUpperCase(),closing_day:+$("acl").value||null,due_day:+$("adu").value||null});
     if(error)return $("amsg").textContent=error.message;
     await loadRef();viewAcc();};
+  $("gc").onclick=()=>{S.catFrom="acc";go("cat");};
   $("out").onclick=()=>sb.auth.signOut();
-  $("tb").onclick=()=>{S.tr=null;go("tr");};
+  $("tb").onclick=()=>{S.tr=null;S.trFrom="acc";go("tr");};
   document.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>{
     const c=bal.find(x=>x.account_id===b.dataset.pay),d=Number(c.balance);
-    S.tr={pay:true,to:c.account_id,amt:d<0?-d:null,desc:"Pagamento de fatura "+c.name};go("tr");});
+    S.trFrom="acc";S.tr={pay:true,to:c.account_id,amt:d<0?-d:null,desc:"Pagamento de fatura "+c.name};go("tr");});
 }
 const f2=v=>Math.abs(Number(v)).toFixed(2).replace(".",",");
 
@@ -337,7 +375,6 @@ async function viewEdit(){
 }
 function drawEdit(t,D){
   const tr=!!t.transfer_group_id,pa=!!t.installment_group_id,cur=t.currency.trim();
-  const cats=S.cats.filter(c=>c.kind===D.kind);
   const accs=S.accounts.filter(a=>a.currency.trim()===cur).map(a=>({id:a.id,name:a.name}));
   if(!accs.some(a=>a.id===t.account_id))accs.push({id:t.account_id,name:t.accounts?.name||"Conta"});
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Editar lançamento</b>
@@ -345,7 +382,7 @@ function drawEdit(t,D){
      :pa?`<p class="mu">Parcela ${t.installment_number}/${t.installment_total}. A conta vale para a compra toda. Alterar o valor muda o total da compra.</p>`:""}
    ${tr||pa?"":`<div class="seg"><button data-k="expense" class="${D.kind==="expense"?"on":""}">Despesa</button><button data-k="income" class="${D.kind==="income"?"on":""}">Receita</button></div>`}
    <label>Valor (${esc(cur)})<input id="ev" inputmode="decimal" value="${esc(D.val)}" ${tr?"disabled":""}></label>
-   ${tr?"":`<label>Categoria<select id="ec"><option value="">(sem categoria)</option>${cats.map(c=>`<option value="${c.id}" ${c.id===D.cat?"selected":""}>${esc(c.name)}</option>`).join("")}</select></label>`}
+   ${tr?"":`<label>Categoria<select id="ec">${catOpts(D.kind,D.cat,true)}</select></label>`}
    <label>Conta / cartão<select id="ea" ${tr||pa?"disabled":""}>${accs.map(a=>`<option value="${a.id}" ${a.id===D.acc?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
    <label>Descrição<input id="edsc" value="${esc(D.desc)}"></label>
    <label>Data<input id="edt" type="date" value="${esc(D.date)}"></label>
@@ -423,6 +460,187 @@ async function viewPar(msg){
     const {error}=await sb.from("transactions").delete().eq("installment_group_id",S.par);
     if(error)return $("pm").textContent="Erro: "+error.message;
     S.par=null;go("list");};
+}
+
+
+/* ================= PAINEL ================= */
+const mm=v=>fmt(Number(v)||0,"BRL");
+async function viewDash(){
+  $("main").innerHTML='<div class="card mu">Carregando…</div>';
+  const ano=today().slice(0,4),per=["weekly","monthly","yearly"],hid=S.hid;
+  const [bl,un,...ps]=await Promise.all([
+    sb.from("account_balances").select("type,balance_base").eq("household_id",hid),
+    sb.from("transactions").select("amount,fx_rate_to_base").eq("household_id",hid).is("category_id",null).is("transfer_group_id",null).lt("amount",0).gte("date",ano+"-01-01").lte("date",ano+"-12-31"),
+    ...per.map(p=>sb.rpc("budget_progress",{p_household:hid,p_ref:today(),p_period:p}))]);
+  if(S.tab!=="dash"||S.hid!==hid)return;
+  const err=[bl,un,...ps].find(r=>r.error);
+  if(err){$("main").innerHTML=`<div class="card neg">${esc(err.error.message)}</div>`;return;}
+  const B=bl.data||[],sum=f=>B.filter(f).reduce((t,a)=>t+Number(a.balance_base||0),0);
+  const geral=sum(()=>true),disp=sum(a=>["checking","cash"].includes(a.type)),cart=sum(a=>a.type==="credit_card"),demais=geral-disp-cart;
+  const nU=(un.data||[]).length,totU=(un.data||[]).reduce((t,x)=>t-Number(x.amount)*Number(x.fx_rate_to_base||1),0);
+  const d=new Date(today()+"T12:00:00"),dw=(d.getDay()+6)%7;
+  const d1=new Date(d);d1.setDate(d.getDate()-dw);const d2=new Date(d1);d2.setDate(d1.getDate()+6);
+  const dm=x=>x.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
+  const titles={weekly:`Semanal · ${dm(d1)} a ${dm(d2)}`,monthly:`Mensal · ${d.toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}`,yearly:`Anual · ${ano}`};
+  const meter=m=>{
+    const amt=Number(m.budget_amount),sp=Number(m.spent),rest=Number(m.remaining),pct=m.pct_used==null?null:Number(m.pct_used);
+    const c=pct==null||amt<=0?"var(--mu)":pct<=80?"var(--grn)":pct<=100?"var(--yel)":"var(--red)";
+    return `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:10px"><b>${esc(m.category_name)}</b><b style="color:${c}">${pct==null?"—":pct.toFixed(1).replace(".",",")+"%"}</b></div>
+      <div class="bar"><i style="width:${pct==null?0:Math.min(pct,100)}%;background:${c}"></i></div>
+      <div class="mu">${mm(sp)} de ${mm(amt)} · ${rest>=0?"restam "+mm(rest):"estourou em "+mm(-rest)}</div></div>`;};
+  const secs=per.map((p,i)=>{const L=ps[i].data||[];return L.length?`<div class="card"><b>${titles[p]}</b>${L.map(meter).join("")}</div>`:"";}).join("");
+  const tem=ps.some(r=>(r.data||[]).length);
+  $("main").innerHTML=`<div class="card"><div class="mu">Saldo geral</div>
+    <div style="font-size:1.6rem;font-weight:700" class="${geral<0?"neg":"pos"}">${mm(geral)}</div>
+    <div class="row" style="margin-top:8px"><span>Disponível (corrente e dinheiro)</span><span class="${disp<0?"neg":""}">${mm(disp)}</span></div>
+    <div class="row"><span>Cartões (dívida atual)</span><span class="${cart<0?"neg":""}">${mm(cart)}</span></div>
+    <div class="row"><span>Demais contas</span><span class="${demais<0?"neg":""}">${mm(demais)}</span></div></div>
+  ${nU?`<div class="card" style="border-color:var(--yel)">⚠️ <b>${nU} despesa(s) sem categoria em ${ano}</b>, somando ${mm(totU)}. Elas não entram nas metas. Corrija pelo ✏️ na tela Lançamentos.<br><button class="sec" id="gu">Ver lançamentos</button></div>`:""}
+  ${tem?secs:'<div class="card">Você ainda não tem metas. Crie a primeira para acompanhar seus gastos com semáforo.</div>'}
+  <button class="sec" id="gm">🎯 Gerenciar metas</button>`;
+  $("gm").onclick=()=>go("metas");
+  if($("gu"))$("gu").onclick=()=>{S.lim=50;go("list");};
+}
+
+/* ================= METAS ================= */
+async function viewMetas(msg){
+  const {data,error}=await sb.from("budgets").select("*").eq("household_id",S.hid).order("created_at");
+  if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
+  const E=S.me?data.find(b=>b.id===S.me):null;if(S.me&&!E)S.me=null;
+  const PN={weekly:"semanal",monthly:"mensal",yearly:"anual"},ORD={weekly:0,monthly:1,yearly:2};
+  const fd=x=>x?x.split("-").reverse().join("/"):"";
+  const lab=b=>b.category_id?(()=>{const c=catById(b.category_id);return c?catLabel(c)+(c.is_active?"":" (arquivada)"):"Categoria removida";})():"Total geral";
+  const L=data.slice().sort((a,b)=>ORD[a.period]-ORD[b.period]||(a.category_id?1:0)-(b.category_id?1:0)||lab(a).localeCompare(lab(b),"pt-BR"));
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar ao Painel</button> <b>Metas</b>
+   ${L.length?L.map(b=>`<div class="row"><div><div>${esc(lab(b))}</div><div class="mu">${PN[b.period]} · a partir de ${fd(b.valid_from)}${b.valid_to?" até "+fd(b.valid_to):""}</div></div>
+     <div style="text-align:right;white-space:nowrap">${mm(b.amount)}<button class="x" data-me="${b.id}">✏️</button><button class="x" data-md="${b.id}">✕</button></div></div>`).join(""):'<p class="mu">Nenhuma meta ainda. Use o formulário abaixo.</p>'}</div>
+  <div class="card"><b>${E?"Editar meta":"Nova meta"}</b>
+   <label>Categoria<select id="mc"><option value="">Total geral</option>${catOpts("expense",E?E.category_id:null)}</select></label>
+   <label>Período<select id="mp">${Object.entries(PN).map(([k,v])=>`<option value="${k}" ${(E?E.period:"monthly")===k?"selected":""}>${v[0].toUpperCase()+v.slice(1)}</option>`).join("")}</select></label>
+   <label>Valor da meta (R$)<input id="ma" inputmode="decimal" placeholder="0,00" value="${E?f2(E.amount):""}"></label>
+   <label>Válida a partir de<input id="mf" type="date" value="${E?E.valid_from:today().slice(0,8)+"01"}"></label>
+   <label>Válida até (opcional)<input id="mt" type="date" value="${E?.valid_to||""}"></label>
+   <button class="pri" id="ms">${E?"Salvar alterações":"Adicionar meta"}</button>
+   ${E?'<button class="sec" id="mx">Cancelar edição</button>':""}
+   <p id="mm2" class="${msg?"pos":"neg"}">${esc(msg||"")}</p>
+   <p class="mu">Uma meta numa categoria-mãe soma também as subcategorias. Meta sem categoria é o "Total geral" de despesas.</p>
+   <button class="lk" id="mgc">🏷 Gerenciar categorias</button></div>`;
+  $("bk").onclick=()=>{S.me=null;go("dash");};
+  $("mgc").onclick=()=>{S.catFrom="metas";go("cat");};
+  if($("mx"))$("mx").onclick=()=>{S.me=null;viewMetas();};
+  document.querySelectorAll("[data-me]").forEach(b=>b.onclick=async()=>{S.me=b.dataset.me;await viewMetas();window.scrollTo(0,document.body.scrollHeight);});
+  document.querySelectorAll("[data-md]").forEach(b=>b.onclick=async()=>{
+    const m=data.find(x=>x.id===b.dataset.md);
+    if(!confirm(`Apagar a meta "${lab(m)}" (${PN[m.period]})?`))return;
+    const {error}=await sb.from("budgets").delete().eq("id",m.id);
+    if(error)return alert("Erro: "+error.message);
+    if(S.me===m.id)S.me=null;
+    viewMetas("Meta apagada ✓");});
+  $("ms").onclick=async()=>{
+    const v=num($("ma").value),vf=$("mf").value,vt=$("mt").value||null,cat=$("mc").value||null,per=$("mp").value;
+    const say=t=>{$("mm2").className="neg";$("mm2").textContent=t;};
+    if(!(v>0))return say("Informe um valor maior que zero.");
+    if(!vf)return say("Informe a data de início.");
+    if(vt&&vt<vf)return say('"Válida até" não pode ser anterior a "Válida a partir de".');
+    const dup=data.find(b=>b.id!==(E&&E.id)&&(b.category_id||null)===cat&&b.period===per&&vf<=(b.valid_to||"9999-12-31")&&b.valid_from<=(vt||"9999-12-31"));
+    if(dup)return say("Já existe uma meta para essa categoria e período nessas datas. Edite a existente.");
+    $("ms").disabled=true;
+    const row={category_id:cat,period:per,amount:v,valid_from:vf,valid_to:vt};
+    const {error}=E?await sb.from("budgets").update(row).eq("id",E.id):await sb.from("budgets").insert({household_id:S.hid,...row});
+    if(error){$("ms").disabled=false;return say("Erro: "+error.message);}
+    S.me=null;viewMetas(E?"Meta atualizada ✓":"Meta criada ✓");};
+}
+
+/* ================= CATEGORIAS ================= */
+const catDup=(name,kind,par,except)=>S.catsAll.some(c=>c.is_active&&c.id!==except&&c.kind===kind&&(c.parent_id||null)===(par||null)&&c.name.trim().toLowerCase()===name.trim().toLowerCase());
+const motherOpts=(kind,sel,excl)=>'<option value="">(nenhuma: categoria principal)</option>'+catSort(S.catsAll.filter(c=>c.kind===kind&&!c.parent_id&&c.id!==excl&&(c.is_active||c.id===sel))).map(c=>`<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(c.name)}${c.is_active?"":" (arquivada)"}</option>`).join("");
+
+async function viewCat(){
+  await loadCats();
+  const msg=S.cmsg;S.cmsg="";
+  const act=S.catsAll.filter(c=>c.is_active),ids=new Set(act.map(c=>c.id)),arq=catSort(S.catsAll.filter(c=>!c.is_active));
+  const roots=k=>catSort(act.filter(c=>c.kind===k&&(!c.parent_id||!ids.has(c.parent_id))));
+  const kids=id=>catSort(act.filter(c=>c.parent_id===id));
+  const row=(c,lv)=>`<div class="row" style="padding-left:${lv*22}px"><div>${lv?"↳ ":""}${esc(lv?c.name:catLabel(c))}</div><button class="x" data-ce="${c.id}">✏️</button></div>`;
+  const sec=(k,t)=>`<div class="card"><b>${t}</b>${roots(k).map(r=>row(r,0)+kids(r.id).map(c=>row(c,1)).join("")).join("")||'<p class="mu">Nenhuma.</p>'}</div>`;
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Categorias</b>
+   <label>Nome<input id="cn" placeholder="Ex.: Combustível"></label>
+   <label>Tipo<select id="ck"><option value="expense">Despesa</option><option value="income">Receita</option></select></label>
+   <label>Categoria-mãe (para criar uma subcategoria)<select id="cm">${motherOpts("expense")}</select></label>
+   <button class="pri" id="ca">Adicionar categoria</button><p id="cmsg" class="${msg?"pos":"neg"}">${esc(msg)}</p></div>
+  ${sec("expense","Despesas")}${sec("income","Receitas")}
+  ${arq.length?`<div class="card"><details><summary>Arquivadas (${arq.length})</summary>${arq.map(c=>`<div class="row"><div>${esc(catLabel(c))} <span class="mu">${c.kind==="expense"?"despesa":"receita"}</span></div><button class="x" data-re="${c.id}">Reativar</button></div>`).join("")}</details></div>`:""}`;
+  const say=t=>{$("cmsg").className="neg";$("cmsg").textContent=t;};
+  $("bk").onclick=()=>go(S.catFrom==="metas"?"metas":"acc");
+  $("ck").onchange=()=>{$("cm").innerHTML=motherOpts($("ck").value);};
+  document.querySelectorAll("[data-ce]").forEach(b=>b.onclick=()=>{S.ce=b.dataset.ce;go("cated");});
+  $("ca").onclick=async()=>{
+    const name=$("cn").value.trim(),kind=$("ck").value,par=$("cm").value||null;
+    if(!name)return say("Informe o nome da categoria.");
+    if(par){const p=catById(par);if(!p||p.parent_id||p.kind!==kind||!p.is_active)return say("Categoria-mãe inválida.");}
+    if(catDup(name,kind,par))return say("Já existe uma categoria com esse nome nesse lugar.");
+    $("ca").disabled=true;
+    const {error}=await sb.from("categories").insert({household_id:S.hid,name,kind,parent_id:par});
+    if(error){$("ca").disabled=false;return say("Erro: "+error.message);}
+    S.cmsg=`"${name}" criada ✓`;viewCat();};
+  document.querySelectorAll("[data-re]").forEach(b=>b.onclick=async()=>{
+    const c=catById(b.dataset.re),p=c.parent_id&&catById(c.parent_id);
+    if(p&&!p.is_active)return say(`Reative primeiro a categoria-mãe "${p.name}".`);
+    if(catDup(c.name,c.kind,c.parent_id,c.id))return say("Já existe uma categoria ativa com esse nome nesse lugar.");
+    const {error}=await sb.from("categories").update({is_active:true}).eq("id",c.id);
+    if(error)return say("Erro: "+error.message);
+    S.cmsg=`"${c.name}" reativada ✓`;viewCat();});
+}
+
+function viewCatEdit(){
+  const c=catById(S.ce);if(!c)return go("cat");
+  const filhas=S.catsAll.filter(x=>x.parent_id===c.id),ativas=filhas.filter(x=>x.is_active);
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Editar categoria</b> <span class="mu">${c.kind==="expense"?"despesa":"receita"}${c.is_active?"":" · arquivada"}</span>
+   <label>Nome<input id="cn" value="${esc(c.name)}"></label>
+   <label>Categoria-mãe<select id="cm" ${filhas.length?"disabled":""}>${motherOpts(c.kind,c.parent_id,c.id)}</select></label>
+   ${filhas.length?`<p class="mu">Esta categoria tem ${filhas.length} subcategoria(s), por isso não pode virar subcategoria de outra. O tipo (despesa ou receita) não pode ser mudado.</p>`:'<p class="mu">O tipo (despesa ou receita) não pode ser mudado.</p>'}
+   <button class="pri" id="cs">Salvar alterações</button>
+   <button class="sec" id="cr">${c.is_active?"Arquivar":"Reativar"}</button>
+   <button class="sec neg" id="cd">Apagar de vez</button>
+   <p id="cmsg" class="neg"></p></div>`;
+  const say=t=>{$("cmsg").textContent=t;};
+  $("bk").onclick=()=>go("cat");
+  const cnt=async(t,col)=>{const r=await sb.from(t).select("id",{count:"exact",head:true}).eq(col,c.id);return r.error?null:(r.count||0);};
+  $("cs").onclick=async()=>{
+    const name=$("cn").value.trim(),par=$("cm").value||null;
+    if(!name)return say("Informe o nome da categoria.");
+    if(par){const p=catById(par);if(!p||p.parent_id||p.kind!==c.kind||par===c.id)return say("Categoria-mãe inválida.");if(filhas.length)return say("Esta categoria tem subcategorias e não pode virar subcategoria.");}
+    if(c.is_active&&catDup(name,c.kind,par,c.id))return say("Já existe uma categoria com esse nome nesse lugar.");
+    $("cs").disabled=true;
+    const {error}=await sb.from("categories").update({name,parent_id:par}).eq("id",c.id);
+    if(error){$("cs").disabled=false;return say("Erro: "+error.message);}
+    S.cmsg="Categoria atualizada ✓";go("cat");};
+  $("cr").onclick=async()=>{
+    if(!c.is_active){
+      const p=c.parent_id&&catById(c.parent_id);
+      if(p&&!p.is_active)return say(`Reative primeiro a categoria-mãe "${p.name}".`);
+      if(catDup(c.name,c.kind,c.parent_id,c.id))return say("Já existe uma categoria ativa com esse nome nesse lugar.");
+      const {error}=await sb.from("categories").update({is_active:true}).eq("id",c.id);
+      if(error)return say("Erro: "+error.message);
+      S.cmsg=`"${c.name}" reativada ✓`;return go("cat");}
+    const idsA=[c.id,...ativas.map(x=>x.id)];
+    const nb=await sb.from("budgets").select("id",{count:"exact",head:true}).in("category_id",idsA);
+    const txt=`Arquivar "${c.name}"${ativas.length?` e suas ${ativas.length} subcategoria(s)`:""}? Some do Lançar e das metas novas; os lançamentos antigos mantêm o nome.`+(nb.count?` Existem ${nb.count} meta(s) ligada(s): elas continuam existindo (apague em Metas se quiser).`:"");
+    if(!confirm(txt))return;
+    const {error}=await sb.from("categories").update({is_active:false}).in("id",idsA);
+    if(error)return say("Erro: "+error.message);
+    S.cmsg=`"${c.name}" arquivada ✓`;go("cat");};
+  $("cd").onclick=async()=>{
+    if(filhas.length)return say(`Tem ${filhas.length} subcategoria(s) (inclusive arquivadas). Apague-as antes, ou arquive esta categoria.`);
+    const [t,b,q]=await Promise.all([cnt("transactions","category_id"),cnt("budgets","category_id"),cnt("quick_entries","category_id")]);
+    if(t==null||b==null||q==null)return say("Não consegui verificar o uso da categoria. Tente de novo.");
+    if(t)return say(`Tem ${t} lançamento(s). Arquive em vez de apagar.`);
+    if(b)return say(`Tem ${b} meta(s) ligada(s). Apague as metas ou arquive a categoria.`);
+    if(q)return say(`É usada em ${q} atalho(s). Arquive em vez de apagar.`);
+    if(!confirm(`Apagar "${c.name}" de vez? Isso não pode ser desfeito.`))return;
+    const {error}=await sb.from("categories").delete().eq("id",c.id);
+    if(error)return say("Erro: "+error.message);
+    S.cmsg=`"${c.name}" apagada ✓`;S.ce=null;go("cat");};
 }
 
 sb.auth.getSession().then(({data:{session}})=>session?start():show("login"));
