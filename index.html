@@ -11,7 +11,8 @@
 @media(prefers-color-scheme:dark){:root{--bg:#111415;--card:#1b1f21;--tx:#eceff0;--mu:#99a2a7;--ac:#2dd4bf;--red:#f97066;--grn:#47cd89;--bd:#2c3236}}
 *{box-sizing:border-box}
 body{margin:0;font:16px system-ui,sans-serif;background:var(--bg);color:var(--tx);padding:env(safe-area-inset-top) 0 80px}
-h1{font-size:1.2rem;margin:0;padding:14px 16px}
+h1{font-size:1.2rem;margin:0;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+#hb{font-size:.8rem;padding:6px 10px;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 main,.wrap{max-width:560px;margin:0 auto;padding:0 12px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
 label{display:block;font-size:.8rem;color:var(--mu);margin-top:10px}
@@ -28,7 +29,7 @@ nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 0;color:
 </style>
 </head>
 <body>
-<h1>🏠 Oikonomia-Finan</h1>
+<h1><span>🏠 Oikonomia-Finan</span><button id="hb" hidden></button></h1>
 
 <div id="login" class="wrap" hidden><form id="lf" class="card">
   <label>E-mail<input id="em" type="email" autocomplete="username" required></label>
@@ -62,40 +63,73 @@ const fmt=(v,c)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:(c||"B
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const num=s=>{s=s.trim();return s.includes(",")?parseFloat(s.replace(/\./g,"").replace(",",".")):parseFloat(s)};
 const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra"};
-let S={hid:null,accounts:[],cats:[],kind:"expense",tab:"add",rt:false,lastAcc:null};
-const show=v=>["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);
+let S={hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"add",rt:false,lastAcc:null};
+const show=v=>{["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);$("hb").hidden=v!=="app";};
 
 $("lf").onsubmit=async e=>{e.preventDefault();
   const {error}=await sb.auth.signInWithPassword({email:$("em").value,password:$("pw").value});
   error?$("lmsg").textContent="E-mail ou senha incorretos.":start();};
 sb.auth.onAuthStateChange(ev=>{if(ev==="SIGNED_OUT"){S.hid=null;show("login");}});
 
-async function start(){
+async function loadHouseholds(){
   const {data:{user}}=await sb.auth.getUser();
+  if(!user)return null;
+  const {data}=await sb.from("household_members").select("household_id,households(name)").eq("user_id",user.id);
+  S.hs=(data||[]).map(m=>({id:m.household_id,name:m.households?.name||"Família"}));
+  return user;
+}
+async function start(prevIds){
+  const user=await loadHouseholds();
   if(!user)return show("login");
-  const {data:m}=await sb.from("household_members").select("household_id").eq("user_id",user.id).maybeSingle();
-  if(!m)return show("onboard");
-  S.hid=m.household_id;show("app");await loadRef();go(S.tab);subscribe();
+  if(!S.hs.length)return show("onboard");
+  const novo=prevIds&&S.hs.find(h=>!prevIds.includes(h.id));
+  let saved=null;try{saved=localStorage.getItem("hid")}catch(e){}
+  const h=novo||S.hs.find(h=>h.id===S.hid)||S.hs.find(h=>h.id===saved)||S.hs[0];
+  await pick(h.id,true);subscribe();
+}
+async function pick(id,keep){
+  S.hid=id;S.lastAcc=null;
+  try{localStorage.setItem("hid",id)}catch(e){}
+  $("hb").textContent="⇄ "+S.hs.find(x=>x.id===id).name;
+  show("app");await loadRef();go(keep&&S.tab!=="fam"?S.tab:"add");
 }
 async function loadRef(){
   const [a,c]=await Promise.all([
-    sb.from("accounts").select("*").eq("is_active",true).order("name"),
-    sb.from("categories").select("*").eq("is_active",true).order("name")]);
+    sb.from("accounts").select("*").eq("household_id",S.hid).eq("is_active",true).order("name"),
+    sb.from("categories").select("*").or(`household_id.eq.${S.hid},household_id.is.null`).eq("is_active",true).order("name")]);
   S.accounts=a.data||[];S.cats=c.data||[];
 }
 function subscribe(){if(S.rt)return;S.rt=true;
   sb.channel("rt").on("postgres_changes",{event:"*",schema:"public",table:"transactions"},()=>{if(S.tab==="list")viewList();}).subscribe();}
 
-async function onb(fn,args){
+async function onb(fn,args,msgId){
+  const prev=S.hs.map(h=>h.id);
   const {error}=await sb.rpc(fn,args);
-  error?$("omsg").textContent=error.message:start();}
-$("mk").onclick=()=>onb("create_household",{p_name:$("hn").value,p_display_name:$("mn").value});
-$("jn").onclick=()=>onb("join_household",{p_code:$("cd").value.trim(),p_display_name:$("mn2").value});
+  error?$(msgId).textContent=error.message:start(prev);}
+$("mk").onclick=()=>onb("create_household",{p_name:$("hn").value,p_display_name:$("mn").value},"omsg");
+$("jn").onclick=()=>onb("join_household",{p_code:$("cd").value.trim(),p_display_name:$("mn2").value},"omsg");
+$("hb").onclick=()=>go("fam");
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>go(b.dataset.t));
 function go(t){S.tab=t;
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
-  ({add:viewAdd,list:viewList,acc:viewAcc})[t]();}
+  ({add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam})[t]();}
+
+function viewFam(){
+  $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
+  <div class="card"><b>Criar nova família</b><div class="mu">Ex.: uma família de testes/demonstração</div>
+   <label>Nome da família<input id="fn" value="Família de teste"></label>
+   <label>Seu nome nela<input id="fm"></label>
+   <button class="pri" id="fk">Criar e entrar</button></div>
+  <div class="card"><b>Entrar com código de convite</b>
+   <label>Código<input id="fc"></label>
+   <label>Seu nome nela<input id="fm2"></label>
+   <button class="pri" id="fj">Entrar</button></div>
+  <p id="fmsg" class="neg"></p>`;
+  document.querySelectorAll("[data-sw]").forEach(b=>b.onclick=()=>pick(b.dataset.sw));
+  $("fk").onclick=()=>onb("create_household",{p_name:$("fn").value,p_display_name:$("fm").value},"fmsg");
+  $("fj").onclick=()=>onb("join_household",{p_code:$("fc").value.trim(),p_display_name:$("fm2").value},"fmsg");
+}
 
 function viewAdd(){
   if(!S.accounts.length){$("main").innerHTML='<div class="card">Cadastre uma conta primeiro, na aba <b>Contas</b>.</div>';return;}
@@ -122,7 +156,8 @@ function viewAdd(){
 
 async function viewList(){
   const {data,error}=await sb.from("transactions")
-    .select("id,date,amount,currency,description,status,installment_number,installment_total,categories(name),accounts(name)")
+    .select("id,date,amount,currency,description,status,installment_number,installment_total,categories(name),accounts!inner(name,household_id)")
+    .eq("accounts.household_id",S.hid)
     .order("date",{ascending:false}).order("created_at",{ascending:false}).limit(50);
   if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
   $("main").innerHTML=`<div class="card">${data.length?data.map(t=>`<div class="row"><div>
@@ -135,7 +170,7 @@ async function viewList(){
 
 async function viewAcc(){
   const [{data:bal},{data:h}]=await Promise.all([
-    sb.from("account_balances").select("*").order("name"),
+    sb.from("account_balances").select("*").eq("household_id",S.hid).order("name"),
     sb.from("households").select("invite_code").eq("id",S.hid).single()]);
   $("main").innerHTML=`<div class="card"><b>Contas</b>${(bal||[]).map(a=>`<div class="row"><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div>${fmt(a.balance,a.currency)}</div></div>`).join("")||'<p class="mu">Nenhuma conta.</p>'}</div>
   <div class="card"><b>Nova conta</b>
