@@ -69,7 +69,7 @@ const fmt=(v,c)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:(c||"B
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const num=s=>{s=s.trim();return s.includes(",")?parseFloat(s.replace(/\./g,"").replace(",",".")):parseFloat(s)};
 const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra"};
-let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"dash",rt:false,lastAcc:null,ed:null,par:null,fAcc:null,lim:50,trFrom:"acc",catsAll:[],ce:null,me:null,catFrom:"acc",cmsg:"",loans:[],parFrom:"list",pmsg:"",antId:null};
+let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"dash",rt:false,lastAcc:null,ed:null,par:null,fAcc:null,lim:50,trFrom:"acc",catsAll:[],ce:null,me:null,catFrom:"acc",cmsg:"",loans:[],parFrom:"list",pmsg:"",antId:null,cards:[],lper:"mon",lmon:null,fatAcc:null,fatMon:null};
 const show=v=>{["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);$("hb").hidden=v!=="app";};
 
 $("lf").onsubmit=async e=>{e.preventDefault();
@@ -95,7 +95,7 @@ async function start(prevIds){
   await pick(h.id,true);subscribe();
 }
 async function pick(id,keep){
-  S.hid=id;S.lastAcc=null;S.pre=null;S.ed=null;S.par=null;S.fAcc=null;S.lim=50;S.parFrom="list";S.antId=null;
+  S.hid=id;S.lastAcc=null;S.pre=null;S.ed=null;S.par=null;S.fAcc=null;S.lim=50;S.parFrom="list";S.antId=null;S.fatAcc=null;S.fatMon=null;S.lmon=null;
   try{localStorage.setItem("hid",id)}catch(e){}
   $("hb").textContent="⇄ "+S.hs.find(x=>x.id===id).name;
   show("app");await loadRef();go(keep&&["dash","add","list","acc"].includes(S.tab)?S.tab:"dash");
@@ -103,11 +103,15 @@ async function pick(id,keep){
 async function loadRef(){
   const [a]=await Promise.all([
     sb.from("accounts").select("*").eq("household_id",S.hid).eq("is_active",true).order("name"),loadCats()]);
-  S.accounts=a.data||[];await Promise.all([loadQs(),loadLoans()]);
+  S.accounts=a.data||[];await Promise.all([loadQs(),loadLoans(),loadCards()]);
 }
 async function loadLoans(){
   const {data}=await sb.from("loan_contracts").select("*").eq("household_id",S.hid);
   S.loans=data||[];
+}
+async function loadCards(){
+  const {data}=await sb.from("credit_cards").select("*").eq("household_id",S.hid);
+  S.cards=data||[];
 }
 async function loadCats(){
   const {data}=await sb.from("categories").select("*").eq("household_id",S.hid).order("name");
@@ -126,6 +130,13 @@ function catOpts(kind,sel,empty){
   return (empty?'<option value="">(sem categoria)</option>':"")+catSort(list).map(c=>`<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(catLabel(c))}${c.is_active?"":" (arquivada)"}</option>`).join("");
 }
 const fa=v=>v==null?"":String(v).replace(".",",");
+const mAdd=(m,n)=>{const d=new Date(m+"T12:00:00");d.setMonth(d.getMonth()+n);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-01";};
+const mlab=m=>new Date(m+"T12:00:00").toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+/* mês da fatura = mês do vencimento (espelha card_statement_month do banco) */
+const stm=(c,d)=>{const [y,mo,dd]=d.split("-").map(Number),dim=new Date(y,mo,0).getDate(),x=new Date(y,mo-1,1);
+  if(dd>Math.min(c.closing_day,dim))x.setMonth(x.getMonth()+1);
+  if(c.due_day<=c.closing_day)x.setMonth(x.getMonth()+1);
+  return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-01";};
 async function loadQs(){
   const [q,m]=await Promise.all([
     sb.from("quick_entries").select("*").eq("household_id",S.hid).eq("is_active",true),
@@ -145,10 +156,10 @@ $("jn").onclick=()=>onb("join_household",{p_code:$("cd").value.trim(),p_display_
 $("hb").onclick=()=>go("fam");
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{if(b.dataset.t==="list")S.lim=50;go(b.dataset.t);});
-const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc"})[t]||t;
+const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc",fat:"acc"})[t]||t;
 function go(t){S.tab=t;
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===NAVOF(t)));
-  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas})[t]();}
+  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas,fat:viewFat})[t]();}
 
 function viewFam(){
   $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
@@ -292,7 +303,7 @@ function viewTr(){
    <label>Data<input id="td" type="date" value="${today()}"></label>
    <label>Descrição<input id="tds" value="${esc(T.desc||"")}"></label>
    <button class="pri" id="ts">Confirmar</button><p id="tm" class="neg"></p>
-   ${T.pay?'<p class="mu">O valor sugerido é a dívida total do cartão. Ajuste para o valor da fatura, se for diferente.</p>':""}</div>`;
+   ${T.pay?'<p class="mu">O valor sugerido é o que falta pagar desta fatura. Ajuste se pagar outro valor.</p>':""}</div>`;
   const cur=id=>S.accounts.find(a=>a.id===id).currency.trim();
   const sync=()=>{$("tw").hidden=cur($("tf").value)===cur($("tt").value);};
   $("tf").onchange=sync;$("tt").onchange=sync;sync();
@@ -305,7 +316,7 @@ function viewTr(){
     if(diff&&!(vt>0))return $("tm").textContent="Informe o valor recebido.";
     $("ts").disabled=true;
     const {error}=await sb.rpc("create_transfer",{p_from:f,p_to:t,p_amount:v,p_date:$("td").value,
-      p_description:$("tds").value.trim()||(T.pay?"Pagamento de fatura":"Transferência"),p_amount_to:vt});
+      p_description:$("tds").value.trim()||(T.pay?"Pagamento de fatura":"Transferência"),p_amount_to:vt,p_statement_month:T.stm||null});
     if(error){$("ts").disabled=false;return $("tm").textContent="Erro: "+error.message;}
     S.tr=null;go(S.trFrom||"acc");};
 }
@@ -315,14 +326,20 @@ async function viewList(){
   let q=sb.from("transactions")
     .select("id,date,amount,currency,description,status,installment_number,installment_total,installment_group_id,transfer_group_id,categories(name),accounts!inner(name,household_id)")
     .eq("accounts.household_id",S.hid);
-  if(S.fAcc)q=q.eq("account_id",S.fAcc);
-  const [{data,error},bl]=await Promise.all([
+  let sq=sb.from("transactions").select("amount,fx_rate_to_base,accounts!inner(household_id)").eq("accounts.household_id",S.hid).is("transfer_group_id",null);
+  if(S.fAcc){q=q.eq("account_id",S.fAcc);sq=sq.eq("account_id",S.fAcc);}
+  const mon=S.lper==="mon",m0=S.lmon||(S.lmon=today().slice(0,8)+"01");
+  if(mon){q=q.gte("date",m0).lt("date",mAdd(m0,1));sq=sq.gte("date",m0).lt("date",mAdd(m0,1));}
+  const [{data,error},bl,sm]=await Promise.all([
     q.order("date",{ascending:false}).order("created_at",{ascending:false}).limit(S.lim),
-    S.fAcc?sb.from("account_balances").select("balance,currency").eq("account_id",S.fAcc).maybeSingle():Promise.resolve({data:null})]);
+    S.fAcc?sb.from("account_balances").select("balance,currency").eq("account_id",S.fAcc).maybeSingle():Promise.resolve({data:null}),mon?sq:Promise.resolve({data:null})]);
   if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
   const bal=bl.data;
-  $("main").innerHTML=`<div class="card"><label style="margin-top:0">Conta<select id="lfa"><option value="">Todas as contas</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.fAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
-    ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}</div>
+  const ent=(sm.data||[]).reduce((r,x)=>{const v=Number(x.amount)*Number(x.fx_rate_to_base||1);return v>0?[r[0]+v,r[1]]:[r[0],r[1]+v];},[0,0]);
+  $("main").innerHTML=`<div class="card"><div class="seg"><button id="lpm" class="${mon?"on":""}">Mês</button><button id="lpa" class="${mon?"":"on"}">Tudo</button></div>
+    ${mon?`<div class="row" style="align-items:center"><button class="x" id="lpp">‹</button><b>${mlab(m0)}</b><button class="x" id="lpn">›</button></div>`:""}
+    <label style="margin-top:0">Conta<select id="lfa"><option value="">Todas as contas</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.fAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
+    ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}${mon?`<div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div><div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div><div class="row"><b>Resultado</b><b class="${ent[0]+ent[1]<0?"neg":"pos"}">${mm(ent[0]+ent[1])}</b></div><div class="mu">Sem transferências.</div>`:""}</div>
   <div class="card">${data.length?data.map(t=>`<div class="row"><div>
     <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
     <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
@@ -330,6 +347,8 @@ async function viewList(){
   ${data.length>=S.lim?'<button class="sec" id="lm">Carregar mais</button>':""}`;
   if($("lm"))$("lm").onclick=async()=>{const y=window.scrollY;S.lim+=50;await viewList();window.scrollTo(0,y);};
   $("lfa").onchange=()=>{S.fAcc=$("lfa").value||null;S.lim=50;viewList();};
+  $("lpm").onclick=()=>{S.lper="mon";S.lim=50;viewList();};$("lpa").onclick=()=>{S.lper="all";S.lim=50;viewList();};
+  if($("lpp")){$("lpp").onclick=()=>{S.lmon=mAdd(m0,-1);S.lim=50;viewList();};$("lpn").onclick=()=>{S.lmon=mAdd(m0,1);S.lim=50;viewList();};}
   document.querySelectorAll("[data-ed]").forEach(b=>b.onclick=()=>{S.ed=b.dataset.ed;go("ed");});
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
     const t=data.find(x=>x.id===b.dataset.del);
@@ -346,7 +365,7 @@ async function viewAcc(){
   const [{data:bal},{data:h}]=await Promise.all([
     sb.from("account_balances").select("*").eq("household_id",S.hid).order("name"),
     sb.from("households").select("invite_code").eq("id",S.hid).single()]);
-  $("main").innerHTML=`<div class="card"><b>Contas</b> <button class="x" id="tb">🔁 Transferir</button>${(bal||[]).map(a=>`<div class="row"><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Pagar fatura</button></div>`:""}</div></div>`).join("")||'<p class="mu">Nenhuma conta.</p>'}</div>
+  $("main").innerHTML=`<div class="card"><b>Contas</b> <button class="x" id="tb">🔁 Transferir</button>${(bal||[]).map(a=>`<div class="row"><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Fatura</button></div>`:""}</div></div>`).join("")||'<p class="mu">Nenhuma conta.</p>'}</div>
   <div class="card"><b>Nova conta</b>
    <label>Nome<input id="an"></label>
    <label>Tipo<select id="at">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label>
@@ -357,16 +376,16 @@ async function viewAcc(){
   <div class="card"><button class="sec" id="gc" style="margin-top:0">🏷 Gerenciar categorias</button></div>
   <div class="card mu">Código de convite da família: <b>${esc(h?.invite_code)}</b><br><br><button id="out">Sair</button></div>`;
   $("ads").onclick=async()=>{
-    const {error}=await sb.from("accounts").insert({household_id:S.hid,name:$("an").value,type:$("at").value,
-      currency:$("ac").value.toUpperCase(),closing_day:+$("acl").value||null,due_day:+$("adu").value||null});
+    const cl=+$("acl").value,du=+$("adu").value,card=$("at").value==="credit_card";
+    if(card&&!(cl>=1&&cl<=31&&du>=1&&du<=31))return $("amsg").textContent="Cartão: informe os dias de fechamento e vencimento (1 a 31).";
+    const {data:na,error}=await sb.from("accounts").insert({household_id:S.hid,name:$("an").value,type:$("at").value,currency:$("ac").value.toUpperCase()}).select("id").single();
     if(error)return $("amsg").textContent=error.message;
+    if(card){const r=await sb.from("credit_cards").insert({household_id:S.hid,account_id:na.id,closing_day:cl,due_day:du});if(r.error)return $("amsg").textContent="Conta criada, mas o cartão não: "+r.error.message;}
     await loadRef();viewAcc();};
   $("gc").onclick=()=>{S.catFrom="acc";go("cat");};
   $("out").onclick=()=>sb.auth.signOut();
   $("tb").onclick=()=>{S.tr=null;S.trFrom="acc";go("tr");};
-  document.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>{
-    const c=bal.find(x=>x.account_id===b.dataset.pay),d=Number(c.balance);
-    S.trFrom="acc";S.tr={pay:true,to:c.account_id,amt:d<0?-d:null,desc:"Pagamento de fatura "+c.name};go("tr");});
+  document.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>{S.fatAcc=b.dataset.pay;S.fatMon=null;go("fat");});
 }
 const f2=v=>Math.abs(Number(v)).toFixed(2).replace(".",",");
 
@@ -526,7 +545,7 @@ async function viewDash(){
   <button class="sec" id="gl">🏦 Financiamentos e empréstimos</button>`;
   $("gm").onclick=()=>go("metas");
   $("gl").onclick=()=>go("loans");
-  if($("gu"))$("gu").onclick=()=>{S.lim=50;go("list");};
+  if($("gu"))$("gu").onclick=()=>{S.lim=50;S.lper="all";go("list");};
 }
 
 /* ================= FINANCIAMENTOS ================= */
@@ -776,6 +795,51 @@ function viewCatEdit(){
     const {error}=await sb.from("categories").delete().eq("id",c.id);
     if(error)return say("Erro: "+error.message);
     S.cmsg=`"${c.name}" apagada ✓`;S.ce=null;go("cat");};
+}
+
+/* ================= FATURA DO CARTÃO ================= */
+async function viewFat(){
+  const cards=S.accounts.filter(a=>a.type==="credit_card");
+  if(!cards.length){$("main").innerHTML='<div class="card"><button class="lk" id="bk">← Voltar</button> Nenhum cartão cadastrado. Crie uma conta do tipo Cartão de crédito em Contas.</div>';$("bk").onclick=()=>go("acc");return;}
+  if(!cards.some(a=>a.id===S.fatAcc))S.fatAcc=cards[0].id;
+  const acc=cards.find(a=>a.id===S.fatAcc),cc=S.cards.find(c=>c.account_id===acc.id),cur=acc.currency.trim();
+  if(!S.fatMon)S.fatMon=cc?stm(cc,today()):today().slice(0,8)+"01";
+  const m=S.fatMon;
+  const {data,error}=await sb.from("transactions").select("id,date,amount,description,status,installment_number,installment_total,transfer_group_id,categories(name)").eq("account_id",acc.id).eq("statement_month",m).order("date");
+  if(S.tab!=="fat"||S.fatAcc!==acc.id||S.fatMon!==m)return;
+  if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
+  const buy=data.filter(t=>!t.transfer_group_id),pay=data.filter(t=>t.transfer_group_id);
+  const total=-buy.reduce((r,t)=>r+Number(t.amount),0),paid=pay.reduce((r,t)=>r+Number(t.amount),0),rest=Math.round((total-paid)*100)/100;
+  const pa=S.accounts.filter(a=>a.type!=="credit_card");
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Fatura do cartão</b>
+   <label>Cartão<select id="fc">${cards.map(a=>`<option value="${a.id}" ${a.id===acc.id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   <div class="row" style="align-items:center"><button class="x" id="fp">‹</button><b>${mlab(m)}</b><button class="x" id="fn">›</button></div>
+   ${cc?`<div class="mu">Fecha dia ${cc.closing_day} · vence dia ${cc.due_day}</div>`:'<p class="neg">Cartão sem configuração: informe os dias em "Configurar cartão".</p>'}
+   <div class="row"><span>Total da fatura</span><b>${fmt(total,cur)}</b></div>
+   <div class="row"><span>Já pago</span><span class="pos">${fmt(paid,cur)}</span></div>
+   <div class="row"><span>Falta pagar</span><b class="${rest>0?"neg":"pos"}">${fmt(rest,cur)}</b></div>
+   ${rest>0?'<button class="pri" id="fpay">Pagar fatura</button>':""}</div>
+  <div class="card"><b>Lançamentos da fatura</b>${buy.length?buy.map(t=>`<div class="row"><div><div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div><div class="mu">${fdt(t.date)}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
+    <div style="text-align:right;white-space:nowrap"><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,cur)}</span><button class="x" data-mv="${t.id}|-1">‹</button><button class="x" data-mv="${t.id}|1">›</button></div></div>`).join(""):'<p class="mu">Nenhum lançamento nesta fatura.</p>'}
+   <p class="mu">As setas ‹ › movem a compra para a fatura anterior ou a seguinte (ex.: compra no dia do fechamento).</p></div>
+  <div class="card"><details ${cc?"":"open"}><summary>⚙ Configurar cartão</summary>
+   <label>Dia de fechamento<input id="fcl" type="number" min="1" max="31" value="${cc?cc.closing_day:""}"></label>
+   <label>Dia de vencimento<input id="fdu" type="number" min="1" max="31" value="${cc?cc.due_day:""}"></label>
+   <label>Conta sugerida para pagar<select id="fpa"><option value="">(nenhuma)</option>${pa.map(a=>`<option value="${a.id}" ${cc&&a.id===cc.payment_account_id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   <button class="pri" id="fsv">Salvar</button><p id="fm" class="neg"></p>
+   <p class="mu">Vale para lançamentos novos ou editados; faturas já atribuídas não mudam.</p></details></div>`;
+  $("bk").onclick=()=>go("acc");
+  $("fc").onchange=()=>{S.fatAcc=$("fc").value;S.fatMon=null;viewFat();};
+  $("fp").onclick=()=>{S.fatMon=mAdd(m,-1);viewFat();};$("fn").onclick=()=>{S.fatMon=mAdd(m,1);viewFat();};
+  if($("fpay"))$("fpay").onclick=()=>{S.trFrom="fat";S.tr={pay:true,to:acc.id,from:cc&&cc.payment_account_id||undefined,amt:rest,desc:"Pagamento da fatura "+mlab(m)+" · "+acc.name,stm:m};go("tr");};
+  document.querySelectorAll("[data-mv]").forEach(b=>b.onclick=async()=>{const [id,d]=b.dataset.mv.split("|");
+    const {error}=await sb.from("transactions").update({statement_month:mAdd(m,+d)}).eq("id",id);
+    if(error)return alert("Erro: "+error.message);viewFat();});
+  $("fsv").onclick=async()=>{const cl=+$("fcl").value,du=+$("fdu").value;
+    if(!(cl>=1&&cl<=31&&du>=1&&du<=31))return $("fm").textContent="Informe dias entre 1 e 31.";
+    const {error}=await sb.from("credit_cards").upsert({household_id:S.hid,account_id:acc.id,closing_day:cl,due_day:du,payment_account_id:$("fpa").value||null},{onConflict:"account_id"});
+    if(error)return $("fm").textContent="Erro: "+error.message;
+    await loadCards();viewFat();};
 }
 
 sb.auth.getSession().then(({data:{session}})=>session?start():show("login"));
