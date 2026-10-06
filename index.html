@@ -69,7 +69,7 @@ const fmt=(v,c)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:(c||"B
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const num=s=>{s=s.trim();return s.includes(",")?parseFloat(s.replace(/\./g,"").replace(",",".")):parseFloat(s)};
 const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra"};
-let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"dash",rt:false,lastAcc:null,ed:null,par:null,fAcc:null,lim:50,trFrom:"acc",catsAll:[],ce:null,me:null,catFrom:"acc",cmsg:""};
+let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"dash",rt:false,lastAcc:null,ed:null,par:null,fAcc:null,lim:50,trFrom:"acc",catsAll:[],ce:null,me:null,catFrom:"acc",cmsg:"",loans:[],parFrom:"list",pmsg:"",antId:null};
 const show=v=>{["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);$("hb").hidden=v!=="app";};
 
 $("lf").onsubmit=async e=>{e.preventDefault();
@@ -95,7 +95,7 @@ async function start(prevIds){
   await pick(h.id,true);subscribe();
 }
 async function pick(id,keep){
-  S.hid=id;S.lastAcc=null;S.pre=null;S.ed=null;S.par=null;S.fAcc=null;S.lim=50;
+  S.hid=id;S.lastAcc=null;S.pre=null;S.ed=null;S.par=null;S.fAcc=null;S.lim=50;S.parFrom="list";S.antId=null;
   try{localStorage.setItem("hid",id)}catch(e){}
   $("hb").textContent="⇄ "+S.hs.find(x=>x.id===id).name;
   show("app");await loadRef();go(keep&&["dash","add","list","acc"].includes(S.tab)?S.tab:"dash");
@@ -103,7 +103,11 @@ async function pick(id,keep){
 async function loadRef(){
   const [a]=await Promise.all([
     sb.from("accounts").select("*").eq("household_id",S.hid).eq("is_active",true).order("name"),loadCats()]);
-  S.accounts=a.data||[];await loadQs();
+  S.accounts=a.data||[];await Promise.all([loadQs(),loadLoans()]);
+}
+async function loadLoans(){
+  const {data}=await sb.from("loan_contracts").select("*").eq("household_id",S.hid);
+  S.loans=data||[];
 }
 async function loadCats(){
   const {data}=await sb.from("categories").select("*").eq("household_id",S.hid).order("name");
@@ -141,10 +145,10 @@ $("jn").onclick=()=>onb("join_household",{p_code:$("cd").value.trim(),p_display_
 $("hb").onclick=()=>go("fam");
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{if(b.dataset.t==="list")S.lim=50;go(b.dataset.t);});
-const NAVOF=t=>({qs:"add",ed:"list",par:"list",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc"})[t]||t;
+const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc"})[t]||t;
 function go(t){S.tab=t;
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===NAVOF(t)));
-  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,cat:viewCat,cated:viewCatEdit,metas:viewMetas})[t]();}
+  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas})[t]();}
 
 function viewFam(){
   $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
@@ -330,7 +334,7 @@ async function viewList(){
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
     const t=data.find(x=>x.id===b.dataset.del);
     const txt=t.transfer_group_id?"Apagar a transferência inteira (as duas pontas)?"
-      :t.installment_group_id?"Apagar SÓ esta parcela? Para apagar a compra inteira, use ✏️ e depois \"Editar todas as parcelas desta compra\".":"Apagar este lançamento?";
+      :t.installment_group_id&&S.loans.some(l=>l.installment_group_id===t.installment_group_id)?"Apagar SÓ esta parcela do contrato? Para apagar o contrato inteiro, use Financiamentos no Painel.":t.installment_group_id?"Apagar SÓ esta parcela? Para apagar a compra inteira, use ✏️ e depois \"Editar todas as parcelas desta compra\".":"Apagar este lançamento?";
     if(!confirm(txt))return;
     const q=sb.from("transactions").delete();
     const {error}=await(t.transfer_group_id?q.eq("transfer_group_id",t.transfer_group_id):q.eq("id",t.id));
@@ -374,30 +378,32 @@ async function viewEdit(){
   drawEdit(t,{kind:t.amount<0?"expense":"income",val:f2(t.amount),date:t.date,cat:t.category_id||"",acc:t.account_id,desc:t.description||"",all:false});
 }
 function drawEdit(t,D){
-  const tr=!!t.transfer_group_id,pa=!!t.installment_group_id,cur=t.currency.trim();
+  const tr=!!t.transfer_group_id,pa=!!t.installment_group_id,cur=t.currency.trim(),lo=pa?S.loans.find(l=>l.installment_group_id===t.installment_group_id):null;
   const accs=S.accounts.filter(a=>a.currency.trim()===cur).map(a=>({id:a.id,name:a.name}));
   if(!accs.some(a=>a.id===t.account_id))accs.push({id:t.account_id,name:t.accounts?.name||"Conta"});
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Editar lançamento</b>
    ${tr?'<p class="mu">Transferência: só data e descrição podem ser editadas, e a mudança vale para as duas pontas. Para corrigir valor ou contas, apague e refaça a transferência.</p>'
+     :lo?`<p class="mu">Parcela ${t.installment_number}/${t.installment_total} do contrato <b>${esc(lo.name)}</b>. Informe o valor realmente cobrado pela instituição.</p>`
      :pa?`<p class="mu">Parcela ${t.installment_number}/${t.installment_total}. A conta vale para a compra toda. Alterar o valor muda o total da compra.</p>`:""}
    ${tr||pa?"":`<div class="seg"><button data-k="expense" class="${D.kind==="expense"?"on":""}">Despesa</button><button data-k="income" class="${D.kind==="income"?"on":""}">Receita</button></div>`}
    <label>Valor (${esc(cur)})<input id="ev" inputmode="decimal" value="${esc(D.val)}" ${tr?"disabled":""}></label>
    ${tr?"":`<label>Categoria<select id="ec">${catOpts(D.kind,D.cat,true)}</select></label>`}
-   <label>Conta / cartão<select id="ea" ${tr||pa?"disabled":""}>${accs.map(a=>`<option value="${a.id}" ${a.id===D.acc?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   <label>Conta / cartão<select id="ea" ${tr||(pa&&!lo)?"disabled":""}>${accs.map(a=>`<option value="${a.id}" ${a.id===D.acc?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
    <label>Descrição<input id="edsc" value="${esc(D.desc)}"></label>
    <label>Data<input id="edt" type="date" value="${esc(D.date)}"></label>
-   ${pa?`<label class="ck"><input type="checkbox" id="eall" ${D.all?"checked":""}> Aplicar categoria e descrição a todas as parcelas desta compra</label>
-     <button class="lk" id="epar">Editar todas as parcelas desta compra</button>`:""}
-   <button class="pri" id="es">Salvar alterações</button><p id="em" class="neg"></p></div>`;
+   ${lo?`<label class="ck"><input type="checkbox" id="efol" ${D.fol?"checked":""}> Se trocar a conta, aplicar também às parcelas seguintes ainda previstas</label>`:""}
+   ${pa?`<label class="ck"><input type="checkbox" id="eall" ${D.all?"checked":""}> Aplicar categoria e descrição a todas as parcelas ${lo?"do contrato":"desta compra"}</label>
+     <button class="lk" id="epar">Editar todas as parcelas ${lo?"do contrato":"desta compra"}</button>`:""}
+   <button class="pri" id="es">Salvar alterações</button><p id="emsg" class="neg"></p></div>`;
   const grab=()=>{D.val=$("ev").value;D.date=$("edt").value;D.desc=$("edsc").value;
-    if($("ec"))D.cat=$("ec").value;if($("ea"))D.acc=$("ea").value;if($("eall"))D.all=$("eall").checked;};
+    if($("ec"))D.cat=$("ec").value;if($("ea"))D.acc=$("ea").value;if($("eall"))D.all=$("eall").checked;if($("efol"))D.fol=$("efol").checked;};
   $("bk").onclick=()=>go("list");
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{grab();D.kind=b.dataset.k;D.cat="";drawEdit(t,D);});
-  if($("epar"))$("epar").onclick=()=>{S.par=t.installment_group_id;go("par");};
+  if($("epar"))$("epar").onclick=()=>{S.par=t.installment_group_id;S.parFrom="list";go("par");};
   $("es").onclick=async()=>{
     const v=num($("ev").value),date=$("edt").value;
-    if(!tr&&!(v>0))return $("em").textContent="Informe um valor válido.";
-    if(!date)return $("em").textContent="Informe a data.";
+    if(!tr&&!(v>0))return $("emsg").textContent="Informe um valor válido.";
+    if(!date)return $("emsg").textContent="Informe a data.";
     const st=date>today()?"planned":"posted",desc=$("edsc").value.trim()||null;
     $("es").disabled=true;
     let r;
@@ -408,37 +414,43 @@ function drawEdit(t,D){
       r=await sb.from("transactions").update(u).eq("id",t.id);
       if(!r.error&&pa&&$("eall").checked)
         r=await sb.from("transactions").update({category_id:u.category_id,description:desc}).eq("installment_group_id",t.installment_group_id);
+      if(!r.error&&lo&&$("ea").value!==t.account_id)
+        r=await sb.rpc("change_loan_account",{p_contract_id:lo.id,p_installment_number:t.installment_number,p_account_id:$("ea").value,p_following:$("efol").checked,p_set_default:false});
     }
-    if(r.error){$("es").disabled=false;return $("em").textContent="Erro: "+r.error.message;}
+    if(r.error){$("es").disabled=false;return $("emsg").textContent="Erro: "+r.error.message;}
     S.ed=null;go("list");};
 }
 
 async function viewPar(msg){
+  if(msg===undefined)msg=S.pmsg;S.pmsg="";
   const {data,error}=await sb.from("transactions")
     .select("id,date,amount,currency,description,status,installment_number,installment_total,categories(name),accounts(name)")
     .eq("installment_group_id",S.par).order("installment_number");
-  if(error||!data||!data.length){S.par=null;return go("list");}
+  if(error||!data||!data.length){S.par=null;return go(S.parFrom==="loans"?"loans":"list");}
+  const lo=S.loans.find(l=>l.installment_group_id===S.par);
   const cur=data[0].currency.trim(),sign=data[0].amount<0?-1:1;
   const cents=t=>Math.round(Math.abs(t.amount)*100);
   const orig=data.reduce((s,t)=>s+cents(t),0);
-  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Parcelas da compra</b>
-   <div class="mu">${esc(data[0].description||"Sem descrição")} · ${esc(data[0].categories?.name||"—")} · ${esc(data[0].accounts?.name)}</div>
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>${lo?"Parcelas do contrato":"Parcelas da compra"}</b>
+   <div class="mu">${esc(lo?lo.name:(data[0].description||"Sem descrição"))} · ${esc(data[0].categories?.name||"—")} · ${esc(data[0].accounts?.name)}</div>
+   ${lo?'<p class="mu">Valores previstos são estimativas. Corrija cada parcela com o valor e a data realmente cobrados pela instituição.</p>':""}
    ${data.map(t=>`<div class="row" style="display:block"><b>${t.installment_number}/${t.installment_total}</b>
-     <span class="mu">${t.status==="planned"&&t.date>today()?"previsto":"lançada"}</span>
+     <span class="mu">${t.status==="planned"&&t.date>today()?"previsto":(lo?"paga":"lançada")}</span>
      <div style="display:flex;gap:8px"><input type="date" data-pd="${t.id}" value="${t.date}"><input data-pv="${t.id}" inputmode="decimal" value="${f2(t.amount)}"></div></div>`).join("")}
    <p id="ps" class="mu"></p>
-   <button class="sec" id="pj">Ajustar última parcela para fechar o total original</button>
+   ${lo?"":'<button class="sec" id="pj">Ajustar última parcela para fechar o total original</button>'}
    <button class="pri" id="psv">Salvar parcelas</button>
-   <button class="sec neg" id="pdel">Apagar compra inteira</button>
+   ${lo?"":'<button class="sec neg" id="pdel">Apagar compra inteira</button>'}
    <p id="pm" class="neg">${esc(msg||"")}</p>
-   <p class="mu">Total original = soma das parcelas ao abrir esta tela (${fmt(orig/100,cur)}).</p></div>`;
+   ${lo?"":`<p class="mu">Total original = soma das parcelas ao abrir esta tela (${fmt(orig/100,cur)}).</p>`}</div>`;
   const vals=()=>[...document.querySelectorAll("[data-pv]")].map(el=>Math.round(num(el.value)*100));
   const calc=()=>{const v=vals();if(v.some(x=>!(x>0))){$("ps").textContent="Há valor inválido.";return;}
     const s=v.reduce((a,b)=>a+b,0),d=s-orig;
-    $("ps").textContent=`Soma ${fmt(s/100,cur)} · original ${fmt(orig/100,cur)} · `+(d===0?"total confere ✓":`diferença ${d>0?"+":"-"}${fmt(Math.abs(d)/100,cur)}`);};
+    $("ps").textContent=lo?`Soma das parcelas: ${fmt(s/100,cur)}`
+      :`Soma ${fmt(s/100,cur)} · original ${fmt(orig/100,cur)} · `+(d===0?"total confere ✓":`diferença ${d>0?"+":"-"}${fmt(Math.abs(d)/100,cur)}`);};
   document.querySelectorAll("[data-pv]").forEach(el=>el.oninput=calc);calc();
-  $("bk").onclick=()=>go("list");
-  $("pj").onclick=()=>{const els=[...document.querySelectorAll("[data-pv]")],v=vals();
+  $("bk").onclick=()=>go(S.parFrom==="loans"?"loans":"list");
+  if($("pj"))$("pj").onclick=()=>{const els=[...document.querySelectorAll("[data-pv]")],v=vals();
     const resto=orig-v.slice(0,-1).reduce((a,b)=>a+b,0);
     if(!(resto>0))return $("pm").textContent="Não é possível: as outras parcelas já passam do total original.";
     els[els.length-1].value=f2(resto/100);$("pm").textContent="";calc();};
@@ -455,7 +467,7 @@ async function viewPar(msg){
       if(error)return viewPar(`Erro na parcela ${t.installment_number}/${t.installment_total}: ${error.message}. A tela mostra o que está salvo.`);
       n++;}
     viewPar(n?`${n} parcela(s) salva(s) ✓`:"Nada foi alterado.");};
-  $("pdel").onclick=async()=>{
+  if($("pdel"))$("pdel").onclick=async()=>{
     if(!confirm(`Apagar a compra inteira (${data.length} parcelas)? Isso não pode ser desfeito.`))return;
     const {error}=await sb.from("transactions").delete().eq("installment_group_id",S.par);
     if(error)return $("pm").textContent="Erro: "+error.message;
@@ -468,9 +480,11 @@ const mm=v=>fmt(Number(v)||0,"BRL");
 async function viewDash(){
   $("main").innerHTML='<div class="card mu">Carregando…</div>';
   const ano=today().slice(0,4),per=["weekly","monthly","yearly"],hid=S.hid;
-  const [bl,un,...ps]=await Promise.all([
+  const [bl,un,lp,lm,...ps]=await Promise.all([
     sb.from("account_balances").select("type,balance_base").eq("household_id",hid),
     sb.from("transactions").select("amount,fx_rate_to_base").eq("household_id",hid).is("category_id",null).is("transfer_group_id",null).lt("amount",0).gte("date",ano+"-01-01").lte("date",ano+"-12-31"),
+    sb.from("loan_progress").select("*").eq("household_id",hid).eq("is_active",true).order("name"),
+    sb.from("loan_monthly_commitment").select("month,amount").eq("household_id",hid),
     ...per.map(p=>sb.rpc("budget_progress",{p_household:hid,p_ref:today(),p_period:p}))]);
   if(S.tab!=="dash"||S.hid!==hid)return;
   const err=[bl,un,...ps].find(r=>r.error);
@@ -490,6 +504,16 @@ async function viewDash(){
       <div class="mu">${mm(sp)} de ${mm(amt)} · ${rest>=0?"restam "+mm(rest):"estourou em "+mm(-rest)}</div></div>`;};
   const secs=per.map((p,i)=>{const L=ps[i].data||[];return L.length?`<div class="card"><b>${titles[p]}</b>${L.map(meter).join("")}</div>`:"";}).join("");
   const tem=ps.some(r=>(r.data||[]).length);
+  const LP=lp.data||[],LM={};(lm.data||[]).forEach(r=>{LM[r.month]=(LM[r.month]||0)+Number(r.amount);});
+  const mk=Object.keys(LM).sort().slice(0,6);
+  const mlab=k=>new Date(k+"T12:00:00").toLocaleDateString("pt-BR",{month:"short",year:"2-digit"}).replace(".","");
+  const loanHtml=LP.length?`<div class="card"><b>Financiamentos e empréstimos</b>${LP.map(l=>{
+    const pc=Number(l.paid_count),tot=Number(l.total_installments),rem=Number(l.remaining_count),pct=tot?Math.min(100,pc/tot*100):0;
+    return `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:10px"><b>${esc(l.name)}</b><span class="mu">${l.kind==="sac"?"SAC":"Parcela fixa"}</span></div>
+      <div class="mu">${pc} de ${tot} pagas · ${rem>0?"faltam "+rem:"quitado ✓"}</div>
+      <div class="bar"><i style="width:${pct}%;background:var(--ac)"></i></div>
+      ${rem>0?`<div class="mu">Próxima (${l.next_number}/${tot}): ${mm(l.next_amount)} em ${fdt(l.next_date)} · ainda a pagar ${mm(l.remaining_amount)}</div>`:""}</div>`;}).join("")}
+    ${mk.length?`<details><summary>Parcelas por mês (todos os contratos)</summary>${mk.map(k=>`<div class="row"><span>${mlab(k)}</span><b>${mm(LM[k])}</b></div>`).join("")}<div class="mu">Soma as parcelas do mês, pagas e previstas. Valores futuros são estimativas.</div></details>`:""}</div>`:"";
   $("main").innerHTML=`<div class="card"><div class="mu">Saldo geral</div>
     <div style="font-size:1.6rem;font-weight:700" class="${geral<0?"neg":"pos"}">${mm(geral)}</div>
     <div class="row" style="margin-top:8px"><span>Disponível (corrente e dinheiro)</span><span class="${disp<0?"neg":""}">${mm(disp)}</span></div>
@@ -497,9 +521,120 @@ async function viewDash(){
     <div class="row"><span>Demais contas</span><span class="${demais<0?"neg":""}">${mm(demais)}</span></div></div>
   ${nU?`<div class="card" style="border-color:var(--yel)">⚠️ <b>${nU} despesa(s) sem categoria em ${ano}</b>, somando ${mm(totU)}. Elas não entram nas metas. Corrija pelo ✏️ na tela Lançamentos.<br><button class="sec" id="gu">Ver lançamentos</button></div>`:""}
   ${tem?secs:'<div class="card">Você ainda não tem metas. Crie a primeira para acompanhar seus gastos com semáforo.</div>'}
-  <button class="sec" id="gm">🎯 Gerenciar metas</button>`;
+  ${loanHtml}
+  <button class="sec" id="gm">🎯 Gerenciar metas</button>
+  <button class="sec" id="gl">🏦 Financiamentos e empréstimos</button>`;
   $("gm").onclick=()=>go("metas");
+  $("gl").onclick=()=>go("loans");
   if($("gu"))$("gu").onclick=()=>{S.lim=50;go("list");};
+}
+
+/* ================= FINANCIAMENTOS ================= */
+const fdt=x=>x?x.split("-").reverse().join("/"):"";
+async function viewLoans(msg){
+  await loadLoans();
+  const {data,error}=await sb.from("loan_progress").select("*").eq("household_id",S.hid).order("name");
+  if(S.tab!=="loans")return;
+  if(error){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar ao Painel</button><p class="neg">${esc(error.message)}</p><p class="mu">Se a tabela ou a view não existe, rode o script financiamentos.sql no SQL Editor do Supabase.</p></div>`;$("bk").onclick=()=>go("dash");return;}
+  const L=data||[],an=id=>S.accounts.find(a=>a.id===id)?.name||"—";
+  const base=S.accounts.filter(a=>a.type!=="credit_card"),accs=base.length?base:S.accounts;
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar ao Painel</button> <b>Financiamentos e empréstimos</b>
+   ${L.length?L.map(l=>{const pc=Number(l.paid_count),tot=Number(l.total_installments),rem=Number(l.remaining_count),pct=tot?Math.min(100,pc/tot*100):0;
+     return `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:10px"><b>${esc(l.name)}</b><span class="mu">${l.kind==="sac"?"SAC":"Parcela fixa"}</span></div>
+      <div class="mu">${pc} de ${tot} pagas · ${rem>0?"faltam "+rem:"quitado ✓"} · conta sugerida: ${esc(an(l.account_id))}</div>
+      <div class="bar"><i style="width:${pct}%;background:var(--ac)"></i></div>
+      ${rem>0?`<div class="mu">Próxima (${l.next_number}/${tot}): ${mm(l.next_amount)} em ${fdt(l.next_date)} · ainda a pagar ${mm(l.remaining_amount)}</div>`:""}
+      <div style="margin-top:8px"><button data-lp="${l.installment_group_id}">Ver parcelas</button> <button data-la="${l.contract_id}">Antecipar</button> <button class="neg" data-ld="${l.contract_id}">Apagar</button></div></div>`;}).join(""):'<p class="mu">Nenhum contrato ainda. Use o formulário abaixo.</p>'}</div>
+  <div class="card"><b>Novo contrato</b>
+   <label>Nome<input id="ln" placeholder="Ex.: Financiamento do carro"></label>
+   <label>Tipo<select id="lkd"><option value="fixed">Parcela fixa</option><option value="sac">SAC (parcelas decrescentes)</option></select></label>
+   <label>Conta sugerida para pagar as parcelas<select id="lac">${accs.map(a=>`<option value="${a.id}">${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
+   <label>Categoria<select id="lct">${catOpts("expense",null,true)}</select></label>
+   <label>Total de parcelas do contrato<input id="lto" type="number" min="1" inputmode="numeric"></label>
+   <label>Quantas já foram pagas<input id="lpd" type="number" min="0" inputmode="numeric" value="0"></label>
+   <label>Data da próxima parcela<input id="ldt" type="date" value="${today()}"></label>
+   <label>Valor da próxima parcela<input id="lam" inputmode="decimal" placeholder="0,00"></label>
+   <div id="lsw" hidden>
+    <label>Queda mensal da parcela (SAC)<input id="ldr" inputmode="decimal" placeholder="0,00"></label>
+    <details><summary>Calcular a queda (estimativa)</summary>
+     <label>Saldo devedor atual<input id="lsd" inputmode="decimal" placeholder="0,00"></label>
+     <label>Taxa de juros ao mês (%)<input id="ltx" inputmode="decimal" placeholder="0,80"></label>
+     <button class="sec" id="lcalc" type="button">Calcular queda</button>
+     <p class="mu">Queda = saldo ÷ parcelas restantes × taxa. Seguros e taxas do banco fazem a conta não bater ao centavo.</p></details></div>
+   <button class="pri" id="ls">Criar contrato e gerar parcelas</button>
+   <p id="lnm" class="${msg?"pos":"neg"}">${esc(msg||"")}</p>
+   <p class="mu">O app gera só as parcelas restantes, como estimativa. Depois, corrija cada parcela com o valor que a instituição cobrar de fato (Ver parcelas).</p></div>`;
+  const say=(t,ok)=>{$("lnm").className=ok?"mu":"neg";$("lnm").textContent=t;};
+  $("bk").onclick=()=>go("dash");
+  $("lkd").onchange=()=>{$("lsw").hidden=$("lkd").value!=="sac";};
+  $("lcalc").onclick=()=>{
+    const sd=num($("lsd").value),tx=num($("ltx").value),n=(parseInt($("lto").value)||0)-(parseInt($("lpd").value)||0);
+    if(!(sd>0&&tx>=0&&n>0))return say("Para calcular, informe saldo devedor, taxa ao mês, total de parcelas e quantas já foram pagas.");
+    $("ldr").value=fa((sd/n*tx/100).toFixed(2));say("Queda calculada. Confira o campo acima.",true);};
+  document.querySelectorAll("[data-lp]").forEach(b=>b.onclick=()=>{S.par=b.dataset.lp;S.parFrom="loans";go("par");});
+  document.querySelectorAll("[data-la]").forEach(b=>b.onclick=()=>{S.antId=b.dataset.la;go("ant");});
+  document.querySelectorAll("[data-ld]").forEach(b=>b.onclick=async()=>{
+    const l=L.find(x=>x.contract_id===b.dataset.ld);
+    if(!confirm(`Apagar o contrato "${l.name}" e TODAS as parcelas dele (pagas e previstas)? Isso muda os saldos das contas e não pode ser desfeito.`))return;
+    const {error}=await sb.rpc("delete_loan_contract",{p_contract_id:l.contract_id});
+    if(error)return say("Erro: "+error.message);
+    viewLoans("Contrato apagado ✓");});
+  $("ls").onclick=async()=>{
+    const name=$("ln").value.trim(),kind=$("lkd").value,total=parseInt($("lto").value),paid=parseInt($("lpd").value||"0"),
+      dt=$("ldt").value,amt=num($("lam").value),drop=kind==="sac"?(num($("ldr").value)||0):0;
+    if(!name)return say("Informe o nome do contrato.");
+    if(!(total>=1))return say("Informe o total de parcelas.");
+    if(!(paid>=0&&paid<total))return say(`Parcelas já pagas deve ficar entre 0 e ${total-1}.`);
+    if(!dt)return say("Informe a data da próxima parcela.");
+    if(!(amt>0))return say("Informe o valor da próxima parcela.");
+    if(drop<0)return say("A queda mensal não pode ser negativa.");
+    if(kind==="sac"&&amt-(total-paid-1)*drop<=0)return say("Com essa queda, a última parcela ficaria zerada ou negativa. Confira a queda mensal.");
+    $("ls").disabled=true;
+    const {error}=await sb.rpc("create_loan_schedule",{p_name:name,p_kind:kind,p_account_id:$("lac").value,p_category_id:$("lct").value||null,
+      p_total_installments:total,p_paid_before:paid,p_first_date:dt,p_first_amount:amt,p_monthly_drop:drop});
+    if(error){$("ls").disabled=false;return say("Erro: "+error.message);}
+    viewLoans(`Contrato criado ✓ ${total-paid} parcela(s) geradas. Confira em "Ver parcelas".`);};
+}
+
+async function viewAnt(){
+  const c=S.loans.find(l=>l.id===S.antId);if(!c){S.antId=null;return go("loans");}
+  const {data,error}=await sb.from("transactions").select("installment_number,date,amount")
+    .eq("installment_group_id",c.installment_group_id).eq("status","planned").gt("date",today()).order("installment_number");
+  if(S.tab!=="ant")return;
+  const back=()=>go("loans");
+  if(error){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button><p class="neg">${esc(error.message)}</p></div>`;$("bk").onclick=back;return;}
+  const O=data||[];
+  if(!O.length){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Antecipar parcelas</b><p class="mu">${esc(c.name)}: não há parcelas em aberto para antecipar.</p></div>`;$("bk").onclick=back;return;}
+  const ca=S.accounts.find(a=>a.id===c.account_id),cur=ca?ca.currency.trim():"BRL";
+  const accs=S.accounts.filter(a=>a.currency.trim()===cur);
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Antecipar parcelas</b>
+   <div class="mu">${esc(c.name)} · ${O.length} parcela(s) em aberto (${O[0].installment_number} a ${O[O.length-1].installment_number} de ${c.total_installments})</div>
+   <label>Quantas parcelas<input id="xn" type="number" min="1" max="${O.length}" inputmode="numeric" value="1"></label>
+   <label>Quais<select id="xw"><option value="next">As próximas</option><option value="last">As últimas</option></select></label>
+   <label>Valor total pago (o que a instituição cobrou)<input id="xv" inputmode="decimal" placeholder="0,00"></label>
+   <label>Data do pagamento<input id="xd" type="date" value="${today()}" max="${today()}"></label>
+   <label>Conta de onde saiu o dinheiro<select id="xa">${accs.map(a=>`<option value="${a.id}" ${a.id===c.account_id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   <p id="xp" class="mu"></p>
+   <button class="pri" id="xs">Registrar antecipação</button><p id="xm" class="neg"></p>
+   <p class="mu">O valor é dividido igualmente entre as parcelas escolhidas, que ficam como pagas na data informada. Em seguida abro as parcelas para você corrigir centavos, se precisar. No SAC, depois de amortização extra, ajuste as parcelas restantes manualmente.</p></div>`;
+  const sel=()=>{const n=parseInt($("xn").value);if(!(n>=1&&n<=O.length))return null;return $("xw").value==="next"?O.slice(0,n):O.slice(-n);};
+  const pv=()=>{const S2=sel(),v=num($("xv").value);if(!S2){$("xp").textContent="";return;}
+    const prev=S2.reduce((a,t)=>a-Number(t.amount),0);
+    $("xp").textContent=`Previsto para essas parcelas: ${fmt(prev,cur)}`+(v>0?` · você paga ${fmt(v,cur)} (${v<=prev?"desconto de "+fmt(prev-v,cur):"acima do previsto em "+fmt(v-prev,cur)})`:"");};
+  ["xn","xw","xv"].forEach(i=>$(i).oninput=pv);pv();
+  $("bk").onclick=back;
+  $("xs").onclick=async()=>{
+    const say=t=>{$("xm").textContent=t;};
+    const n=parseInt($("xn").value),v=num($("xv").value),d=$("xd").value;
+    if(!(n>=1&&n<=O.length))return say(`Informe de 1 a ${O.length} parcelas.`);
+    if(!(v>0)||Math.round(v*100)/100!==v)return say("Informe o valor total pago (até 2 casas decimais).");
+    if(!d)return say("Informe a data do pagamento.");
+    if(d>today())return say("A data do pagamento não pode ser futura.");
+    $("xs").disabled=true;
+    const acc=$("xa").value;
+    const {error}=await sb.rpc("anticipate_installments",{p_contract_id:c.id,p_n:n,p_which:$("xw").value,p_total_paid:v,p_date:d,p_account_id:acc===c.account_id?null:acc});
+    if(error){$("xs").disabled=false;return say("Erro: "+error.message);}
+    S.par=c.installment_group_id;S.parFrom="loans";S.pmsg=`${n} parcela(s) antecipada(s) ✓ Confira os valores abaixo e corrija o que for preciso.`;go("par");};
 }
 
 /* ================= METAS ================= */
@@ -601,7 +736,7 @@ function viewCatEdit(){
    ${filhas.length?`<p class="mu">Esta categoria tem ${filhas.length} subcategoria(s), por isso não pode virar subcategoria de outra. O tipo (despesa ou receita) não pode ser mudado.</p>`:'<p class="mu">O tipo (despesa ou receita) não pode ser mudado.</p>'}
    <button class="pri" id="cs">Salvar alterações</button>
    <button class="sec" id="cr">${c.is_active?"Arquivar":"Reativar"}</button>
-   <button class="sec neg" id="cd">Apagar de vez</button>
+   <button class="sec neg" id="cdel">Apagar de vez</button>
    <p id="cmsg" class="neg"></p></div>`;
   const say=t=>{$("cmsg").textContent=t;};
   $("bk").onclick=()=>go("cat");
@@ -630,7 +765,7 @@ function viewCatEdit(){
     const {error}=await sb.from("categories").update({is_active:false}).in("id",idsA);
     if(error)return say("Erro: "+error.message);
     S.cmsg=`"${c.name}" arquivada ✓`;go("cat");};
-  $("cd").onclick=async()=>{
+  $("cdel").onclick=async()=>{
     if(filhas.length)return say(`Tem ${filhas.length} subcategoria(s) (inclusive arquivadas). Apague-as antes, ou arquive esta categoria.`);
     const [t,b,q]=await Promise.all([cnt("transactions","category_id"),cnt("budgets","category_id"),cnt("quick_entries","category_id")]);
     if(t==null||b==null||q==null)return say("Não consegui verificar o uso da categoria. Tente de novo.");
