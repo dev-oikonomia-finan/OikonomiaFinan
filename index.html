@@ -68,8 +68,8 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const fmt=(v,c)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:(c||"BRL").trim()}).format(v);
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const num=s=>{s=s.trim();return s.includes(",")?parseFloat(s.replace(/\./g,"").replace(",",".")):parseFloat(s)};
-const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra"};
-let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"dash",rt:false,lastAcc:null,ed:null,par:null,fAcc:null,lim:50,trFrom:"acc",catsAll:[],ce:null,me:null,catFrom:"acc",cmsg:"",loans:[],parFrom:"list",pmsg:"",antId:null,cards:[],lper:"mon",lmon:null,fatAcc:null,fatMon:null};
+const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra",benefit:"Benefício (vale)"};
+let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"dash",rt:false,lastAcc:null,ed:null,par:null,fAcc:null,lim:50,trFrom:"acc",catsAll:[],ce:null,me:null,catFrom:"acc",cmsg:"",loans:[],parFrom:"list",pmsg:"",antId:null,cards:[],lper:"mon",lmon:null,fatAcc:null,fatMon:null,cloAcc:null,cloMon:null,acmId:null,holders:[],fatH:null,wallets:[],wbal:{}};
 const show=v=>{["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);$("hb").hidden=v!=="app";};
 
 $("lf").onsubmit=async e=>{e.preventDefault();
@@ -95,7 +95,7 @@ async function start(prevIds){
   await pick(h.id,true);subscribe();
 }
 async function pick(id,keep){
-  S.hid=id;S.lastAcc=null;S.pre=null;S.ed=null;S.par=null;S.fAcc=null;S.lim=50;S.parFrom="list";S.antId=null;S.fatAcc=null;S.fatMon=null;S.lmon=null;
+  S.hid=id;S.lastAcc=null;S.pre=null;S.ed=null;S.par=null;S.fAcc=null;S.lim=50;S.parFrom="list";S.antId=null;S.fatAcc=null;S.fatMon=null;S.lmon=null;S.cloAcc=null;S.cloMon=null;S.acmId=null;S.fatH=null;
   try{localStorage.setItem("hid",id)}catch(e){}
   $("hb").textContent="⇄ "+S.hs.find(x=>x.id===id).name;
   show("app");await loadRef();go(keep&&["dash","add","list","acc"].includes(S.tab)?S.tab:"dash");
@@ -103,16 +103,28 @@ async function pick(id,keep){
 async function loadRef(){
   const [a]=await Promise.all([
     sb.from("accounts").select("*").eq("household_id",S.hid).eq("is_active",true).order("name"),loadCats()]);
-  S.accounts=a.data||[];await Promise.all([loadQs(),loadLoans(),loadCards()]);
+  S.accounts=a.data||[];await Promise.all([loadQs(),loadLoans(),loadCards(),loadWallets()]);
 }
 async function loadLoans(){
   const {data}=await sb.from("loan_contracts").select("*").eq("household_id",S.hid);
   S.loans=data||[];
 }
 async function loadCards(){
-  const {data}=await sb.from("credit_cards").select("*").eq("household_id",S.hid);
-  S.cards=data||[];
+  const [c,h]=await Promise.all([sb.from("credit_cards").select("*").eq("household_id",S.hid),sb.from("card_holders").select("*").eq("household_id",S.hid).order("name")]);
+  S.cards=c.data||[];S.holders=h.data||[];
 }
+async function loadWallets(){
+  const [w,b]=await Promise.all([sb.from("wallets").select("*").eq("household_id",S.hid).order("name"),sb.from("wallet_balances").select("wallet_id,balance").eq("household_id",S.hid)]);
+  S.wallets=w.data||[];S.wbal={};(b.data||[]).forEach(r=>{S.wbal[r.wallet_id]=Number(r.balance);});
+}
+const walletsOf=id=>S.wallets.filter(w=>w.account_id===id&&w.is_active);
+const walletName=id=>(S.wallets.find(w=>w.id===id)||{}).name||"";
+const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const walWhen=w=>w.credit_month?"em "+MESES[w.credit_month-1]:"todo mês";
+const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+const holdersOf=id=>S.holders.filter(h=>h.account_id===id&&h.is_active);
+const holderName=id=>(S.holders.find(h=>h.id===id)||{}).name||"";
 async function loadCats(){
   const {data}=await sb.from("categories").select("*").eq("household_id",S.hid).order("name");
   S.catsAll=data||[];S.cats=S.catsAll.filter(c=>c.is_active);
@@ -156,10 +168,10 @@ $("jn").onclick=()=>onb("join_household",{p_code:$("cd").value.trim(),p_display_
 $("hb").onclick=()=>go("fam");
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{if(b.dataset.t==="list")S.lim=50;go(b.dataset.t);});
-const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc",fat:"acc"})[t]||t;
+const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc",fat:"acc",clo:"acc",acm:"acc"})[t]||t;
 function go(t){S.tab=t;
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===NAVOF(t)));
-  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas,fat:viewFat})[t]();}
+  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas,fat:viewFat,clo:viewClo,acm:viewAcm})[t]();}
 
 function viewFam(){
   $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
@@ -189,13 +201,13 @@ function viewAdd(){
    ${qs.length?`<div class="chips">${qs.map(q=>`<button data-q="${q.id}" class="${P.qid===q.id?"on":""}">${q.is_favorite?"⭐ ":""}${esc(q.name)}</button>`).join("")}</div>`:""}
    <button class="lk" id="mq">⚙ Gerenciar atalhos</button>
    <label><span id="vt">Valor</span><input id="v" inputmode="decimal" placeholder="0,00" value="${fa(P.amt)}"></label>
-   ${S.kind==="expense"?`<label class="ck"><input type="checkbox" id="pc"> Compra parcelada</label>
+   ${S.kind==="expense"?`<label class="ck" id="pcl"><input type="checkbox" id="pc"> Compra parcelada</label>
    <div id="pcw" hidden><label>Nº de parcelas<input id="pn" type="number" min="2" max="48" value="2"></label><p id="pv" class="mu"></p></div>`:""}
    <label>Categoria<select id="cat">${badCat?'<option value="" selected>Escolha a categoria</option>':""}${catOpts(S.kind,badCat?null:P.cat)}</select></label>
    <label>Conta / cartão<select id="acc">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===accSel?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
-   <div id="pin"></div>
+   <label id="hw" hidden>Portador<select id="hd"></select></label><label id="ww" hidden>Carteira<select id="wl"></select></label><p id="wm" class="mu"></p><div id="pin"></div>
    <label>Descrição<input id="desc" value="${esc(P.desc||"")}"></label>
-   <label>Data<input id="dt" type="date" value="${esc(P.dt||today())}"></label>
+   <label>Data<input id="dt" type="date" value="${esc(P.dt||today())}"></label><p id="fh" class="mu"></p>
    ${P.qid?"":'<label class="ck"><input type="checkbox" id="fl"> ⭐ Salvar também como atalho</label>'}
    <button class="pri" id="save">Salvar</button><p id="msg" class="mu"></p></div>`;
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{
@@ -210,13 +222,30 @@ function viewAdd(){
     const q=S.qs.find(x=>x.id===b.dataset.q);
     if(P.qid===q.id){
       const d=$("desc").value;
-      S.pre={cat:$("cat").value,acc:$("acc").value,amt:$("v").value,desc:d.trim()===q.name?"":d,dt:$("dt").value};
+      S.pre={cat:$("cat").value,acc:$("acc").value,amt:$("v").value,desc:d.trim()===q.name?"":d,dt:$("dt").value,wal:$("wl").value};
       viewAdd();$("desc").focus();return;}
     const ok=id=>S.accounts.some(a=>a.id===id)?id:null;
     S.pre={qid:q.id,cat:q.category_id,acc:ok(S.qa[q.id])||ok(q.default_account_id)||S.lastAcc,desc:q.name,amt:q.default_amount};
     viewAdd();$("v").focus();});
+  const fh=()=>{const c=S.cards.find(x=>x.account_id===$("acc").value),d=$("dt").value;$("fh").textContent=c&&d?"Entra na fatura de "+mlab(stm(c,d)):"";};
+  $("dt").oninput=fh;fh();
+  const hd=()=>{const L=holdersOf($("acc").value);$("hw").hidden=L.length<2;let sv=null;try{sv=localStorage.getItem("hold_"+$("acc").value)}catch(e){}
+    $("hd").innerHTML=L.map(h=>`<option value="${h.id}" ${h.id===sv?"selected":""}>${esc(h.name)}</option>`).join("");};hd();
+  const wv=()=>{const a=S.accounts.find(x=>x.id===$("acc").value);
+    if(!a||a.type!=="benefit"){$("wm").textContent="";return;}
+    if(!$("wl").value){$("wm").textContent="Nenhuma carteira nesta conta. Crie em Contas > ⚙ da conta.";return;}
+    const bal=S.wbal[$("wl").value]||0,val=num($("v").value);
+    $("wm").textContent=S.kind==="expense"&&val>bal?`⚠️ Saldo da carteira: ${fmt(bal,a.currency)}. Esta compra é maior (faltam ${fmt(val-bal,a.currency)}). Você pode salvar mesmo assim.`:"";};
+  const wl=()=>{const a=S.accounts.find(x=>x.id===$("acc").value),ben=!!a&&a.type==="benefit";
+    $("ww").hidden=!ben;if($("pcl")){$("pcl").hidden=ben;if(ben&&$("pc").checked){$("pc").checked=false;pv();}}
+    if(!ben){$("wm").textContent="";return;}
+    const L=walletsOf(a.id),cur=$("wl").value||P.wal||lsGet("wal_"+a.id)||"";
+    $("wl").innerHTML=L.length?L.map(w=>`<option value="${w.id}" ${w.id===cur?"selected":""}>${esc(w.name)} · ${fmt(S.wbal[w.id]||0,a.currency)}</option>`).join(""):'<option value="">(sem carteiras)</option>';
+    wv();};
+  $("wl").onchange=wv;$("v").addEventListener("input",wv);wl();
+  loadWallets().then(()=>{if(S.tab==="add"&&$("wl"))wl();});
   $("acc").onchange=()=>{
-    pv();
+    pv();fh();hd();wl();
     if(!P.qid||$("acc").value===S.qa[P.qid]){$("pin").innerHTML="";return;}
     $("pin").innerHTML='<button class="lk" id="pb">📌 Usar esta conta como minha neste atalho</button>';
     $("pb").onclick=async()=>{const acc=$("acc").value;
@@ -236,13 +265,18 @@ function viewAdd(){
       if(S.qs.some(q=>q.name.toLowerCase()===qname.toLowerCase()))return $("msg").textContent="Já existe um atalho com esse nome. Mude a descrição ou desmarque a opção de atalho.";
     }
     S.lastAcc=$("acc").value;
+    const hl=holdersOf(S.lastAcc),hv=hl.length>1?$("hd").value:(hl[0]?hl[0].id:null);
+    if(hl.length>1){try{localStorage.setItem("hold_"+S.lastAcc,hv)}catch(e){}}
     const cat=$("cat").value||null,dt=$("dt").value;
+    const accO=S.accounts.find(a=>a.id===S.lastAcc),isBen=!!accO&&accO.type==="benefit",wid=isBen?($("wl").value||null):null;
+    if(isBen&&!wid)return $("msg").textContent="Escolha a carteira. Se não houver nenhuma, crie em Contas > ⚙ da conta.";
+    if(wid){lsSet("wal_"+S.lastAcc,wid);if(S.kind==="income")lsSet("walcat_"+wid,cat||"");}
     $("save").disabled=true;
     const r=n?await sb.rpc("create_installments",{p_account_id:S.lastAcc,p_first_date:dt,p_total:val,p_n:n,
-        p_category_id:cat,p_description:$("desc").value||null})
+        p_category_id:cat,p_description:$("desc").value||null,p_card_holder_id:hv})
       :await sb.from("transactions").insert({account_id:S.lastAcc,date:dt,
         amount:S.kind==="expense"?-val:val,category_id:cat,description:$("desc").value||null,
-        status:dt>today()?"planned":"posted"});
+        status:dt>today()?"planned":"posted",card_holder_id:hv,wallet_id:wid});
     if(r.error){$("save").disabled=false;return $("msg").textContent="Erro: "+r.error.message;}
     let extra="";
     if(mkq){
@@ -254,7 +288,7 @@ function viewAdd(){
         extra=m.error?" (atalho criado, mas sem fixar sua conta: "+m.error.message+")":" · atalho criado ⭐";}
     }
     if(P.qid)await sb.from("quick_entries").update({use_count:(S.qs.find(x=>x.id===P.qid)?.use_count||0)+1,last_used_at:new Date().toISOString()}).eq("id",P.qid);
-    S.pre=null;await loadQs();viewAdd();$("msg").textContent=(n?`Parcelado em ${n}x ✓`:"Salvo ✓")+extra;};
+    S.pre=null;await Promise.all([loadQs(),loadWallets()]);viewAdd();$("msg").textContent=(n?`Parcelado em ${n}x ✓`:"Salvo ✓")+extra;};
 }
 
 function viewQs(){
@@ -291,10 +325,10 @@ function viewQs(){
 
 function viewTr(){
   const T=S.tr||{};
-  const nc=S.accounts.filter(a=>a.type!=="credit_card");
-  const from=T.from||(nc[0]||S.accounts[0]).id;
-  const to=T.to||(S.accounts.find(a=>a.id!==from)||S.accounts[0]).id;
-  const opt=sel=>S.accounts.map(a=>`<option value="${a.id}" ${a.id===sel?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("");
+  const TA=S.accounts.filter(a=>a.type!=="benefit"),nc=TA.filter(a=>a.type!=="credit_card");
+  const from=T.from||(nc[0]||TA[0]).id;
+  const to=T.to||(TA.find(a=>a.id!==from)||TA[0]).id;
+  const opt=sel=>TA.map(a=>`<option value="${a.id}" ${a.id===sel?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("");
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>${T.pay?"Pagar fatura":"Transferir entre contas"}</b>
    <label>De (origem)<select id="tf">${opt(from)}</select></label>
    <label>Para (destino)<select id="tt">${opt(to)}</select></label>
@@ -324,12 +358,14 @@ function viewTr(){
 async function viewList(){
   if(S.fAcc&&!S.accounts.some(a=>a.id===S.fAcc))S.fAcc=null;
   let q=sb.from("transactions")
-    .select("id,date,amount,currency,description,status,installment_number,installment_total,installment_group_id,transfer_group_id,categories(name),accounts!inner(name,household_id)")
+    .select("id,account_id,statement_month,card_holder_id,wallet_id,date,amount,currency,description,status,installment_number,installment_total,installment_group_id,transfer_group_id,categories(name),accounts!inner(name,household_id)")
     .eq("accounts.household_id",S.hid);
   let sq=sb.from("transactions").select("amount,fx_rate_to_base,accounts!inner(household_id)").eq("accounts.household_id",S.hid).is("transfer_group_id",null);
   if(S.fAcc){q=q.eq("account_id",S.fAcc);sq=sq.eq("account_id",S.fAcc);}
   const mon=S.lper==="mon",m0=S.lmon||(S.lmon=today().slice(0,8)+"01");
-  if(mon){q=q.gte("date",m0).lt("date",mAdd(m0,1));sq=sq.gte("date",m0).lt("date",mAdd(m0,1));}
+  const fc=S.fAcc&&S.accounts.find(a=>a.id===S.fAcc&&a.type==="credit_card");
+  if(mon){if(fc){q=q.eq("statement_month",m0);sq=sq.eq("statement_month",m0);}
+    else{q=q.gte("date",m0).lt("date",mAdd(m0,1));sq=sq.gte("date",m0).lt("date",mAdd(m0,1));}}
   const [{data,error},bl,sm]=await Promise.all([
     q.order("date",{ascending:false}).order("created_at",{ascending:false}).limit(S.lim),
     S.fAcc?sb.from("account_balances").select("balance,currency").eq("account_id",S.fAcc).maybeSingle():Promise.resolve({data:null}),mon?sq:Promise.resolve({data:null})]);
@@ -337,12 +373,12 @@ async function viewList(){
   const bal=bl.data;
   const ent=(sm.data||[]).reduce((r,x)=>{const v=Number(x.amount)*Number(x.fx_rate_to_base||1);return v>0?[r[0]+v,r[1]]:[r[0],r[1]+v];},[0,0]);
   $("main").innerHTML=`<div class="card"><div class="seg"><button id="lpm" class="${mon?"on":""}">Mês</button><button id="lpa" class="${mon?"":"on"}">Tudo</button></div>
-    ${mon?`<div class="row" style="align-items:center"><button class="x" id="lpp">‹</button><b>${mlab(m0)}</b><button class="x" id="lpn">›</button></div>`:""}
+    ${mon?`<div class="row" style="align-items:center"><button class="x" id="lpp">‹</button><b>${fc?"Fatura de ":""}${mlab(m0)}</b><button class="x" id="lpn">›</button></div>`:""}
     <label style="margin-top:0">Conta<select id="lfa"><option value="">Todas as contas</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.fAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
-    ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}${mon?`<div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div><div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div><div class="row"><b>Resultado</b><b class="${ent[0]+ent[1]<0?"neg":"pos"}">${mm(ent[0]+ent[1])}</b></div><div class="mu">Sem transferências.</div>`:""}</div>
+    ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}${mon&&fc?`<div class="row"><b>Total da fatura</b><b>${mm(-(ent[0]+ent[1]))}</b></div><div class="mu">Compras da fatura, sem os pagamentos.</div>`:mon?`<div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div><div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div><div class="row"><b>Resultado</b><b class="${ent[0]+ent[1]<0?"neg":"pos"}">${mm(ent[0]+ent[1])}</b></div><div class="mu">Sem transferências.</div>`:""}</div>
   <div class="card">${data.length?data.map(t=>`<div class="row"><div>
     <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
-    <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
+    <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.statement_month&&S.accounts.some(a=>a.id===t.account_id&&a.type==="credit_card")?" · fatura "+t.statement_month.slice(5,7)+"/"+t.statement_month.slice(0,4):""}${t.card_holder_id&&holdersOf(t.account_id).length>1?" · "+esc(holderName(t.card_holder_id)):""}${t.wallet_id?" · "+esc(walletName(t.wallet_id)):""}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
     <div style="text-align:right;white-space:nowrap"><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,t.currency)}</span><button class="x" data-ed="${t.id}">✏️</button><button class="x" data-del="${t.id}">✕</button></div></div>`).join(""):`<span class="mu">${S.fAcc?"Nenhum lançamento nesta conta.":"Nenhum lançamento ainda."}</span>`}</div>
   ${data.length>=S.lim?'<button class="sec" id="lm">Carregar mais</button>':""}`;
   if($("lm"))$("lm").onclick=async()=>{const y=window.scrollY;S.lim+=50;await viewList();window.scrollTo(0,y);};
@@ -362,10 +398,14 @@ async function viewList(){
 }
 
 async function viewAcc(){
-  const [{data:bal},{data:h}]=await Promise.all([
+  const [{data:bal},{data:h},{data:ina},{data:wbd}]=await Promise.all([
     sb.from("account_balances").select("*").eq("household_id",S.hid).order("name"),
-    sb.from("households").select("invite_code").eq("id",S.hid).single()]);
-  $("main").innerHTML=`<div class="card"><b>Contas</b> <button class="x" id="tb">🔁 Transferir</button>${(bal||[]).map(a=>`<div class="row"><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Fatura</button></div>`:""}</div></div>`).join("")||'<p class="mu">Nenhuma conta.</p>'}</div>
+    sb.from("households").select("invite_code").eq("id",S.hid).single(),
+    sb.from("accounts").select("id,name").eq("household_id",S.hid).eq("is_active",false).order("name"),
+    sb.from("wallet_balances").select("wallet_id,balance").eq("household_id",S.hid)]);
+  const WB={};(wbd||[]).forEach(r=>{WB[r.wallet_id]=Number(r.balance);});
+  const wbk=a=>{const L=walletsOf(a.account_id);return `<div style="padding:0 0 8px 14px;border-bottom:1px solid var(--bd)">${L.length?L.map(w=>`<div class="row" style="border:0;padding:6px 0"><div>${esc(w.name)}<div class="mu">${w.expected_amount?"esperado "+fmt(w.expected_amount,a.currency)+" · ":""}${walWhen(w)}</div></div><div style="text-align:right">${fmt(WB[w.id]||0,a.currency)}<button class="x" data-cr="${w.id}">+ Crédito</button></div></div>`).join(""):'<div class="mu">Nenhuma carteira. Crie em ⚙ da conta.</div>'}</div>`;};
+  $("main").innerHTML=`<div class="card"><b>Contas</b> <button class="x" id="tb">🔁 Transferir</button>${(bal||[]).filter(a=>S.accounts.some(x=>x.id===a.account_id)).map(a=>`<div class="row"><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}<button class="x" data-mg="${a.account_id}">⚙</button>${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Fatura</button></div>`:""}</div></div>${a.type==="benefit"?wbk(a):""}`).join("")||'<p class="mu">Nenhuma conta.</p>'}</div>
   <div class="card"><b>Nova conta</b>
    <label>Nome<input id="an"></label>
    <label>Tipo<select id="at">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label>
@@ -373,16 +413,22 @@ async function viewAcc(){
    <label>Cartão: dia de fechamento<input id="acl" type="number" min="1" max="31"></label>
    <label>Cartão: dia de vencimento<input id="adu" type="number" min="1" max="31"></label>
    <button class="pri" id="ads">Adicionar</button><p id="amsg" class="neg"></p></div>
-  <div class="card"><button class="sec" id="gc" style="margin-top:0">🏷 Gerenciar categorias</button></div>
+  <div class="card"><button class="sec" id="gcl" style="margin-top:0">🔒 Fechamento mensal</button><button class="sec" id="gc">🏷 Gerenciar categorias</button></div>
+  ${(ina||[]).length?`<div class="card"><details><summary>Contas inativas (${ina.length})</summary>${ina.map(a=>`<div class="row"><span>${esc(a.name)}</span><button class="x" data-ra="${a.id}">Reativar</button></div>`).join("")}</details></div>`:""}
   <div class="card mu">Código de convite da família: <b>${esc(h?.invite_code)}</b><br><br><button id="out">Sair</button></div>`;
   $("ads").onclick=async()=>{
     const cl=+$("acl").value,du=+$("adu").value,card=$("at").value==="credit_card";
     if(card&&!(cl>=1&&cl<=31&&du>=1&&du<=31))return $("amsg").textContent="Cartão: informe os dias de fechamento e vencimento (1 a 31).";
     const {data:na,error}=await sb.from("accounts").insert({household_id:S.hid,name:$("an").value,type:$("at").value,currency:$("ac").value.toUpperCase()}).select("id").single();
     if(error)return $("amsg").textContent=error.message;
-    if(card){const r=await sb.from("credit_cards").insert({household_id:S.hid,account_id:na.id,closing_day:cl,due_day:du});if(r.error)return $("amsg").textContent="Conta criada, mas o cartão não: "+r.error.message;}
+    if(card){const r=await sb.from("credit_cards").insert({household_id:S.hid,account_id:na.id,closing_day:cl,due_day:du});if(r.error)return $("amsg").textContent="Conta criada, mas o cartão não: "+r.error.message;await sb.from("card_holders").insert({household_id:S.hid,account_id:na.id,name:"Titular"});}
     await loadRef();viewAcc();};
   $("gc").onclick=()=>{S.catFrom="acc";go("cat");};
+  document.querySelectorAll("[data-cr]").forEach(b=>b.onclick=()=>{const w=S.wallets.find(x=>x.id===b.dataset.cr);
+    S.kind="income";S.pre={acc:w.account_id,wal:w.id,amt:w.expected_amount,desc:"Crédito "+w.name,cat:lsGet("walcat_"+w.id)||null};go("add");});
+  document.querySelectorAll("[data-mg]").forEach(b=>b.onclick=()=>{S.acmId=b.dataset.mg;go("acm");});
+  document.querySelectorAll("[data-ra]").forEach(b=>b.onclick=async()=>{const {error}=await sb.from("accounts").update({is_active:true}).eq("id",b.dataset.ra);if(error)return alert("Erro: "+error.message);await loadRef();viewAcc();});
+  $("gcl").onclick=()=>{S.cloAcc=null;S.cloMon=null;go("clo");};
   $("out").onclick=()=>sb.auth.signOut();
   $("tb").onclick=()=>{S.tr=null;S.trFrom="acc";go("tr");};
   document.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>{S.fatAcc=b.dataset.pay;S.fatMon=null;go("fat");});
@@ -391,14 +437,15 @@ const f2=v=>Math.abs(Number(v)).toFixed(2).replace(".",",");
 
 async function viewEdit(){
   const {data:t,error}=await sb.from("transactions")
-    .select("id,account_id,date,amount,currency,description,category_id,status,transfer_group_id,installment_group_id,installment_number,installment_total,accounts(name)")
+    .select("id,account_id,card_holder_id,wallet_id,date,amount,currency,description,category_id,status,transfer_group_id,installment_group_id,installment_number,installment_total,accounts(name)")
     .eq("id",S.ed).single();
   if(error||!t){alert("Lançamento não encontrado.");return go("list");}
-  drawEdit(t,{kind:t.amount<0?"expense":"income",val:f2(t.amount),date:t.date,cat:t.category_id||"",acc:t.account_id,desc:t.description||"",all:false});
+  drawEdit(t,{kind:t.amount<0?"expense":"income",val:f2(t.amount),date:t.date,cat:t.category_id||"",acc:t.account_id,desc:t.description||"",hold:t.card_holder_id||"",wal:t.wallet_id||"",all:false});
 }
 function drawEdit(t,D){
   const tr=!!t.transfer_group_id,pa=!!t.installment_group_id,cur=t.currency.trim(),lo=pa?S.loans.find(l=>l.installment_group_id===t.installment_group_id):null;
-  const accs=S.accounts.filter(a=>a.currency.trim()===cur).map(a=>({id:a.id,name:a.name}));
+  const ben=(S.accounts.find(a=>a.id===t.account_id)||{}).type==="benefit";
+  const accs=S.accounts.filter(a=>a.currency.trim()===cur&&(ben?a.id===t.account_id:a.type!=="benefit")).map(a=>({id:a.id,name:a.name}));
   if(!accs.some(a=>a.id===t.account_id))accs.push({id:t.account_id,name:t.accounts?.name||"Conta"});
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Editar lançamento</b>
    ${tr?'<p class="mu">Transferência: só data e descrição podem ser editadas, e a mudança vale para as duas pontas. Para corrigir valor ou contas, apague e refaça a transferência.</p>'
@@ -407,14 +454,16 @@ function drawEdit(t,D){
    ${tr||pa?"":`<div class="seg"><button data-k="expense" class="${D.kind==="expense"?"on":""}">Despesa</button><button data-k="income" class="${D.kind==="income"?"on":""}">Receita</button></div>`}
    <label>Valor (${esc(cur)})<input id="ev" inputmode="decimal" value="${esc(D.val)}" ${tr?"disabled":""}></label>
    ${tr?"":`<label>Categoria<select id="ec">${catOpts(D.kind,D.cat,true)}</select></label>`}
-   <label>Conta / cartão<select id="ea" ${tr||(pa&&!lo)?"disabled":""}>${accs.map(a=>`<option value="${a.id}" ${a.id===D.acc?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   <label>Conta / cartão<select id="ea" ${tr||ben||(pa&&!lo)?"disabled":""}>${accs.map(a=>`<option value="${a.id}" ${a.id===D.acc?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   ${!tr&&holdersOf(t.account_id).length>1?`<label>Portador<select id="eh">${holdersOf(t.account_id).map(h=>`<option value="${h.id}" ${h.id===D.hold?"selected":""}>${esc(h.name)}</option>`).join("")}</select></label>`:""}
+   ${!tr&&ben?`<label>Carteira<select id="ew">${S.wallets.filter(w=>w.account_id===t.account_id&&(w.is_active||w.id===D.wal)).map(w=>`<option value="${w.id}" ${w.id===D.wal?"selected":""}>${esc(w.name)}${w.is_active?"":" (inativa)"}</option>`).join("")}</select></label>`:""}
    <label>Descrição<input id="edsc" value="${esc(D.desc)}"></label>
    <label>Data<input id="edt" type="date" value="${esc(D.date)}"></label>
    ${lo?`<label class="ck"><input type="checkbox" id="efol" ${D.fol?"checked":""}> Se trocar a conta, aplicar também às parcelas seguintes ainda previstas</label>`:""}
    ${pa?`<label class="ck"><input type="checkbox" id="eall" ${D.all?"checked":""}> Aplicar categoria e descrição a todas as parcelas ${lo?"do contrato":"desta compra"}</label>
      <button class="lk" id="epar">Editar todas as parcelas ${lo?"do contrato":"desta compra"}</button>`:""}
    <button class="pri" id="es">Salvar alterações</button><p id="emsg" class="neg"></p></div>`;
-  const grab=()=>{D.val=$("ev").value;D.date=$("edt").value;D.desc=$("edsc").value;
+  const grab=()=>{D.val=$("ev").value;D.date=$("edt").value;D.desc=$("edsc").value;if($("eh"))D.hold=$("eh").value;if($("ew"))D.wal=$("ew").value;
     if($("ec"))D.cat=$("ec").value;if($("ea"))D.acc=$("ea").value;if($("eall"))D.all=$("eall").checked;if($("efol"))D.fol=$("efol").checked;};
   $("bk").onclick=()=>go("list");
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{grab();D.kind=b.dataset.k;D.cat="";drawEdit(t,D);});
@@ -429,10 +478,11 @@ function drawEdit(t,D){
     if(tr)r=await sb.from("transactions").update({date,description:desc,status:st}).eq("transfer_group_id",t.transfer_group_id);
     else{
       const u={amount:D.kind==="expense"?-v:v,date,category_id:$("ec").value||null,description:desc,status:st};
-      if(!pa)u.account_id=$("ea").value;
+      if(!pa)u.account_id=$("ea").value;if($("eh")&&$("ea").value===t.account_id)u.card_holder_id=$("eh").value;if($("ew"))u.wallet_id=$("ew").value;
       r=await sb.from("transactions").update(u).eq("id",t.id);
       if(!r.error&&pa&&$("eall").checked)
         r=await sb.from("transactions").update({category_id:u.category_id,description:desc}).eq("installment_group_id",t.installment_group_id);
+      if(!r.error&&pa&&$("eh"))r=await sb.from("transactions").update({card_holder_id:$("eh").value}).eq("installment_group_id",t.installment_group_id);
       if(!r.error&&lo&&$("ea").value!==t.account_id)
         r=await sb.rpc("change_loan_account",{p_contract_id:lo.id,p_installment_number:t.installment_number,p_account_id:$("ea").value,p_following:$("efol").checked,p_set_default:false});
     }
@@ -500,7 +550,7 @@ async function viewDash(){
   $("main").innerHTML='<div class="card mu">Carregando…</div>';
   const ano=today().slice(0,4),per=["weekly","monthly","yearly"],hid=S.hid;
   const [bl,un,lp,lm,...ps]=await Promise.all([
-    sb.from("account_balances").select("type,balance_base").eq("household_id",hid),
+    sb.from("account_balances").select("account_id,type,balance_base").eq("household_id",hid),
     sb.from("transactions").select("amount,fx_rate_to_base").eq("household_id",hid).is("category_id",null).is("transfer_group_id",null).lt("amount",0).gte("date",ano+"-01-01").lte("date",ano+"-12-31"),
     sb.from("loan_progress").select("*").eq("household_id",hid).eq("is_active",true).order("name"),
     sb.from("loan_monthly_commitment").select("month,amount").eq("household_id",hid),
@@ -508,8 +558,8 @@ async function viewDash(){
   if(S.tab!=="dash"||S.hid!==hid)return;
   const err=[bl,un,...ps].find(r=>r.error);
   if(err){$("main").innerHTML=`<div class="card neg">${esc(err.error.message)}</div>`;return;}
-  const B=bl.data||[],sum=f=>B.filter(f).reduce((t,a)=>t+Number(a.balance_base||0),0);
-  const geral=sum(()=>true),disp=sum(a=>["checking","cash"].includes(a.type)),cart=sum(a=>a.type==="credit_card"),demais=geral-disp-cart;
+  const B=(bl.data||[]).filter(a=>S.accounts.some(x=>x.id===a.account_id)),sum=f=>B.filter(f).reduce((t,a)=>t+Number(a.balance_base||0),0);
+  const geral=sum(()=>true),disp=sum(a=>["checking","cash"].includes(a.type)),cart=sum(a=>a.type==="credit_card"),ben=sum(a=>a.type==="benefit"),demais=geral-disp-cart-ben;
   const nU=(un.data||[]).length,totU=(un.data||[]).reduce((t,x)=>t-Number(x.amount)*Number(x.fx_rate_to_base||1),0);
   const d=new Date(today()+"T12:00:00"),dw=(d.getDay()+6)%7;
   const d1=new Date(d);d1.setDate(d.getDate()-dw);const d2=new Date(d1);d2.setDate(d1.getDate()+6);
@@ -537,6 +587,7 @@ async function viewDash(){
     <div style="font-size:1.6rem;font-weight:700" class="${geral<0?"neg":"pos"}">${mm(geral)}</div>
     <div class="row" style="margin-top:8px"><span>Disponível (corrente e dinheiro)</span><span class="${disp<0?"neg":""}">${mm(disp)}</span></div>
     <div class="row"><span>Cartões (dívida atual)</span><span class="${cart<0?"neg":""}">${mm(cart)}</span></div>
+    ${B.some(a=>a.type==="benefit")?`<div class="row"><span>Benefícios (vales)</span><span class="${ben<0?"neg":""}">${mm(ben)}</span></div>`:""}
     <div class="row"><span>Demais contas</span><span class="${demais<0?"neg":""}">${mm(demais)}</span></div></div>
   ${nU?`<div class="card" style="border-color:var(--yel)">⚠️ <b>${nU} despesa(s) sem categoria em ${ano}</b>, somando ${mm(totU)}. Elas não entram nas metas. Corrija pelo ✏️ na tela Lançamentos.<br><button class="sec" id="gu">Ver lançamentos</button></div>`:""}
   ${tem?secs:'<div class="card">Você ainda não tem metas. Crie a primeira para acompanhar seus gastos com semáforo.</div>'}
@@ -805,12 +856,13 @@ async function viewFat(){
   const acc=cards.find(a=>a.id===S.fatAcc),cc=S.cards.find(c=>c.account_id===acc.id),cur=acc.currency.trim();
   if(!S.fatMon)S.fatMon=cc?stm(cc,today()):today().slice(0,8)+"01";
   const m=S.fatMon;
-  const {data,error}=await sb.from("transactions").select("id,date,amount,description,status,installment_number,installment_total,transfer_group_id,categories(name)").eq("account_id",acc.id).eq("statement_month",m).order("date");
+  const {data,error}=await sb.from("transactions").select("id,card_holder_id,date,amount,description,status,installment_number,installment_total,transfer_group_id,categories(name)").eq("account_id",acc.id).eq("statement_month",m).order("date");
   if(S.tab!=="fat"||S.fatAcc!==acc.id||S.fatMon!==m)return;
   if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
   const buy=data.filter(t=>!t.transfer_group_id),pay=data.filter(t=>t.transfer_group_id);
   const total=-buy.reduce((r,t)=>r+Number(t.amount),0),paid=pay.reduce((r,t)=>r+Number(t.amount),0),rest=Math.round((total-paid)*100)/100;
   const pa=S.accounts.filter(a=>a.type!=="credit_card");
+  const H=holdersOf(acc.id),totH=id=>-buy.filter(t=>t.card_holder_id===id).reduce((r,t)=>r+Number(t.amount),0),sh=H.some(h=>h.id===S.fatH)?S.fatH:null,vis=sh?buy.filter(t=>t.card_holder_id===sh):buy;
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Fatura do cartão</b>
    <label>Cartão<select id="fc">${cards.map(a=>`<option value="${a.id}" ${a.id===acc.id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
    <div class="row" style="align-items:center"><button class="x" id="fp">‹</button><b>${mlab(m)}</b><button class="x" id="fn">›</button></div>
@@ -818,8 +870,10 @@ async function viewFat(){
    <div class="row"><span>Total da fatura</span><b>${fmt(total,cur)}</b></div>
    <div class="row"><span>Já pago</span><span class="pos">${fmt(paid,cur)}</span></div>
    <div class="row"><span>Falta pagar</span><b class="${rest>0?"neg":"pos"}">${fmt(rest,cur)}</b></div>
-   ${rest>0?'<button class="pri" id="fpay">Pagar fatura</button>':""}</div>
-  <div class="card"><b>Lançamentos da fatura</b>${buy.length?buy.map(t=>`<div class="row"><div><div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div><div class="mu">${fdt(t.date)}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
+   ${H.length>1?`<div class="chips"><button data-fh="" class="${sh?"":"on"}">Todos</button>${H.map(h=>`<button data-fh="${h.id}" class="${sh===h.id?"on":""}">${esc(h.name)} ${fmt(totH(h.id),cur)}</button>`).join("")}</div>`:""}
+   ${rest>0?'<button class="pri" id="fpay">Pagar fatura</button>':""}
+   <button class="sec" id="fcc">🔒 Fechar esta fatura</button></div>
+  <div class="card"><b>Lançamentos da fatura</b>${vis.length?vis.map(t=>`<div class="row"><div><div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div><div class="mu">${fdt(t.date)}${H.length>1&&t.card_holder_id?" · "+esc(holderName(t.card_holder_id)):""}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
     <div style="text-align:right;white-space:nowrap"><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,cur)}</span><button class="x" data-mv="${t.id}|-1">‹</button><button class="x" data-mv="${t.id}|1">›</button></div></div>`).join(""):'<p class="mu">Nenhum lançamento nesta fatura.</p>'}
    <p class="mu">As setas ‹ › movem a compra para a fatura anterior ou a seguinte (ex.: compra no dia do fechamento).</p></div>
   <div class="card"><details ${cc?"":"open"}><summary>⚙ Configurar cartão</summary>
@@ -827,19 +881,131 @@ async function viewFat(){
    <label>Dia de vencimento<input id="fdu" type="number" min="1" max="31" value="${cc?cc.due_day:""}"></label>
    <label>Conta sugerida para pagar<select id="fpa"><option value="">(nenhuma)</option>${pa.map(a=>`<option value="${a.id}" ${cc&&a.id===cc.payment_account_id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
    <button class="pri" id="fsv">Salvar</button><p id="fm" class="neg"></p>
-   <p class="mu">Vale para lançamentos novos ou editados; faturas já atribuídas não mudam.</p></details></div>`;
+   <p class="mu">Vale para lançamentos novos ou editados; faturas já atribuídas não mudam.</p>
+   <b style="display:block;margin-top:14px">Portadores</b>${H.map(h=>`<div class="row"><input data-hn="${h.id}" value="${esc(h.name)}"><button class="x" data-hx="${h.id}">✕</button></div>`).join("")}
+   <label>Novo portador<input id="hnw" placeholder="Ex.: Esposa"></label><button class="sec" id="hadd">Adicionar portador</button><p id="hm" class="neg"></p></details></div>`;
   $("bk").onclick=()=>go("acc");
-  $("fc").onchange=()=>{S.fatAcc=$("fc").value;S.fatMon=null;viewFat();};
+  $("fc").onchange=()=>{S.fatAcc=$("fc").value;S.fatMon=null;S.fatH=null;viewFat();};
   $("fp").onclick=()=>{S.fatMon=mAdd(m,-1);viewFat();};$("fn").onclick=()=>{S.fatMon=mAdd(m,1);viewFat();};
+  $("fcc").onclick=()=>{S.cloAcc=acc.id;S.cloMon=m;go("clo");};
   if($("fpay"))$("fpay").onclick=()=>{S.trFrom="fat";S.tr={pay:true,to:acc.id,from:cc&&cc.payment_account_id||undefined,amt:rest,desc:"Pagamento da fatura "+mlab(m)+" · "+acc.name,stm:m};go("tr");};
   document.querySelectorAll("[data-mv]").forEach(b=>b.onclick=async()=>{const [id,d]=b.dataset.mv.split("|");
     const {error}=await sb.from("transactions").update({statement_month:mAdd(m,+d)}).eq("id",id);
     if(error)return alert("Erro: "+error.message);viewFat();});
+  document.querySelectorAll("[data-fh]").forEach(b=>b.onclick=()=>{S.fatH=b.dataset.fh||null;viewFat();});
+  document.querySelectorAll("[data-hn]").forEach(el=>el.onchange=async()=>{const n=el.value.trim();if(!n)return;const {error}=await sb.from("card_holders").update({name:n}).eq("id",el.dataset.hn);$("hm").textContent=error?"Erro: "+error.message:"Nome salvo ✓";await loadCards();});
+  document.querySelectorAll("[data-hx]").forEach(b=>b.onclick=async()=>{if(!confirm("Remover este portador?"))return;const {error}=await sb.from("card_holders").delete().eq("id",b.dataset.hx);if(error)return $("hm").textContent="Não foi possível remover (tem lançamentos?): "+error.message;await loadCards();viewFat();});
+  $("hadd").onclick=async()=>{const n=$("hnw").value.trim();if(!n)return $("hm").textContent="Informe o nome.";const {error}=await sb.from("card_holders").insert({household_id:S.hid,account_id:acc.id,name:n});if(error)return $("hm").textContent="Erro: "+error.message;await loadCards();viewFat();};
   $("fsv").onclick=async()=>{const cl=+$("fcl").value,du=+$("fdu").value;
     if(!(cl>=1&&cl<=31&&du>=1&&du<=31))return $("fm").textContent="Informe dias entre 1 e 31.";
     const {error}=await sb.from("credit_cards").upsert({household_id:S.hid,account_id:acc.id,closing_day:cl,due_day:du,payment_account_id:$("fpa").value||null},{onConflict:"account_id"});
     if(error)return $("fm").textContent="Erro: "+error.message;
     await loadCards();viewFat();};
+}
+
+/* ================= FECHAMENTO MENSAL ================= */
+async function viewClo(msg){
+  if(!S.accounts.length){$("main").innerHTML='<div class="card"><button class="lk" id="bk">← Voltar</button> Cadastre uma conta primeiro.</div>';$("bk").onclick=()=>go("acc");return;}
+  if(!S.accounts.some(a=>a.id===S.cloAcc))S.cloAcc=S.accounts[0].id;
+  const acc=S.accounts.find(a=>a.id===S.cloAcc),cur=acc.currency.trim(),card=acc.type==="credit_card";
+  const {data:cl,error}=await sb.from("balance_closings").select("id,ref_month,reported_balance,calculated_balance").eq("account_id",acc.id).order("ref_month",{ascending:false});
+  if(error){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button><p class="neg">${esc(error.message)}</p><p class="mu">Se a tabela não existe, rode o script cartoes_fechamento.sql no Supabase.</p></div>`;$("bk").onclick=()=>go("acc");return;}
+  if(!S.cloMon)S.cloMon=cl.length?mAdd(cl[0].ref_month,1):mAdd(today().slice(0,8)+"01",-1);
+  const m=S.cloMon,done=cl.find(c=>c.ref_month===m);
+  const {data:calc}=await sb.rpc("closing_balance",{p_account:acc.id,p_ref:m});
+  if(S.tab!=="clo"||S.cloAcc!==acc.id||S.cloMon!==m)return;
+  const cv=Number(calc||0),dif=x=>{const d=Math.round(x*100)/100;return d===0?"confere ✓":"diferença "+fmt(d,cur);};
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Fechamento mensal</b>
+   <label>${card?"Cartão":"Conta"}<select id="ca">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===acc.id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   <div class="row" style="align-items:center"><button class="x" id="cp">‹</button><b>${mlab(m)}</b><button class="x" id="cn">›</button></div>
+   ${done?`<p class="pos">Fechado ✓</p><div class="row"><span>${card?"Total da fatura":"Saldo"} (app)</span><span>${fmt(done.calculated_balance,cur)}</span></div><div class="row"><span>Informado (extrato)</span><span>${fmt(done.reported_balance,cur)}</span></div><div class="mu">${dif(done.reported_balance-done.calculated_balance)}</div>`
+   :`<div class="row"><span>${card?"Total da fatura no app":"Saldo no app, no fim do mês"}</span><b>${fmt(cv,cur)}</b></div>
+   <label>${card?"Total da fatura no banco":"Saldo no extrato do banco"}<input id="cv" inputmode="decimal" placeholder="0,00"></label>
+   <p id="cd" class="mu"></p><button class="pri" id="cs">Fechar ${esc(mlab(m))}</button>
+   <p class="mu">Fechar congela os lançamentos até este mês${card?" (por fatura)":""}. Para corrigir depois, reabra o último fechamento.</p>`}
+   <p id="cm" class="${msg?"pos":"neg"}">${esc(msg||"")}</p></div>
+  <div class="card"><b>Fechamentos</b>${cl.length?cl.map((c,i)=>`<div class="row"><div>${mlab(c.ref_month)}<div class="mu">${fmt(c.reported_balance,cur)} · ${dif(c.reported_balance-c.calculated_balance)}</div></div>${i===0?`<button class="x" data-ro="${c.id}">Reabrir</button>`:""}</div>`).join(""):'<p class="mu">Nenhum fechamento nesta conta.</p>'}</div>`;
+  const say=t=>{$("cm").className="neg";$("cm").textContent=t;};
+  $("bk").onclick=()=>go("acc");
+  $("ca").onchange=()=>{S.cloAcc=$("ca").value;S.cloMon=null;viewClo();};
+  $("cp").onclick=()=>{S.cloMon=mAdd(m,-1);viewClo();};$("cn").onclick=()=>{S.cloMon=mAdd(m,1);viewClo();};
+  if($("cv"))$("cv").oninput=()=>{const v=num($("cv").value);$("cd").textContent=isNaN(v)?"":"Comparação: "+dif(v-cv);};
+  if($("cs"))$("cs").onclick=async()=>{
+    const v=num($("cv").value);
+    if(isNaN(v))return say("Informe o valor do extrato.");
+    const d=Math.round((v-cv)*100)/100;
+    if(d!==0&&!confirm(`Há diferença de ${fmt(d,cur)} entre o app e o banco. Fechar mesmo assim?`))return;
+    $("cs").disabled=true;
+    const {error}=await sb.rpc("close_balance",{p_account:acc.id,p_ref:m,p_reported:v});
+    if(error){$("cs").disabled=false;return say(error.message);}
+    viewClo("Mês fechado ✓");};
+  document.querySelectorAll("[data-ro]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("Reabrir o último fechamento? Os lançamentos desse mês voltam a poder ser alterados."))return;
+    const {error}=await sb.from("balance_closings").delete().eq("id",b.dataset.ro);
+    if(error)return say(error.message);
+    viewClo("Fechamento reaberto ✓");});
+}
+
+/* ================= GERENCIAR CONTA ================= */
+async function viewAcm(){
+  const a=S.accounts.find(x=>x.id===S.acmId);if(!a){S.acmId=null;return go("acc");}
+  const {data:bl}=await sb.from("account_balances").select("balance").eq("account_id",a.id).maybeSingle();
+  if(S.tab!=="acm")return;
+  const bal=Number((bl||{}).balance||0),cur=a.currency.trim();
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Gerenciar conta</b> <span class="mu">${TYPES[a.type]} · ${esc(cur)}</span>
+   <label>Nome<input id="an2" value="${esc(a.name)}"></label>
+   <button class="pri" id="as">Salvar nome</button>
+   <div class="row" style="margin-top:14px"><span>Saldo atual</span><b>${fmt(bal,cur)}</b></div>
+   <button class="sec neg" id="ai">Inativar conta</button><p id="am" class="neg"></p>
+   <p class="mu">Inativar esconde a conta das telas e do saldo geral; os lançamentos ficam guardados e você pode reativar em Contas. Só é possível com saldo zerado${a.type==="credit_card"?" (cartão sem dívida)":""}.</p></div>`;
+  if(a.type==="benefit"){await loadWallets();if(S.tab!=="acm")return;drawWal(a);}
+  const say=t=>{$("am").textContent=t;};
+  $("bk").onclick=()=>go("acc");
+  $("as").onclick=async()=>{const n=$("an2").value.trim();
+    if(!n)return say("Informe o nome da conta.");
+    if(S.accounts.some(x=>x.id!==a.id&&x.name.trim().toLowerCase()===n.toLowerCase()))return say("Já existe uma conta com esse nome.");
+    const {error}=await sb.from("accounts").update({name:n}).eq("id",a.id);
+    if(error)return say("Erro: "+error.message);
+    await loadRef();go("acc");};
+  $("ai").onclick=async()=>{
+    if(Math.abs(bal)>=0.005)return say(`O saldo é ${fmt(bal,cur)}. Zere antes de inativar (transferência ou ajuste).`);
+    if(!confirm(`Inativar a conta "${a.name}"?`))return;
+    const {error}=await sb.from("accounts").update({is_active:false}).eq("id",a.id);
+    if(error)return say("Erro: "+error.message);
+    S.acmId=null;await loadRef();go("acc");};
+}
+
+function drawWal(a,m){
+  const cur=a.currency.trim(),act=S.wallets.filter(w=>w.account_id===a.id&&w.is_active),ina=S.wallets.filter(w=>w.account_id===a.id&&!w.is_active);
+  const mo=sel=>'<option value="">Todo mês</option>'+MESES.map((x,i)=>`<option value="${i+1}" ${+sel===i+1?"selected":""}>${x[0].toUpperCase()+x.slice(1)}</option>`).join("");
+  $("main").insertAdjacentHTML("beforeend",`<div class="card" id="wcard"><b>Carteiras</b><div class="mu">O saldo da conta é a soma das carteiras.</div>
+   ${act.map(w=>`<div style="padding:10px 0;border-bottom:1px solid var(--bd)"><div class="row" style="border:0;padding:0"><input data-wn="${w.id}" value="${esc(w.name)}"><b style="white-space:nowrap;margin-left:8px;align-self:center">${fmt(S.wbal[w.id]||0,cur)}</b></div>
+     <div style="display:flex;gap:8px"><label style="flex:1">Valor esperado<input data-we="${w.id}" inputmode="decimal" placeholder="0,00" value="${fa(w.expected_amount)}"></label><label style="flex:1">Cai em<select data-wm="${w.id}">${mo(w.credit_month)}</select></label></div>
+     <button class="x" data-wi="${w.id}" style="margin:8px 0 0">Inativar</button></div>`).join("")||'<p class="mu">Nenhuma carteira ainda.</p>'}
+   <b style="display:block;margin-top:14px">Nova carteira</b>
+   <label>Nome<input id="wnn" placeholder="Ex.: Refeição e Alimentação"></label>
+   <div style="display:flex;gap:8px"><label style="flex:1">Valor esperado<input id="wne" inputmode="decimal" placeholder="0,00"></label><label style="flex:1">Cai em<select id="wnm">${mo("")}</select></label></div>
+   <button class="sec" id="wadd">Adicionar carteira</button><p id="wmsg" class="${m?"pos":"neg"}">${esc(m||"")}</p>
+   ${ina.length?`<details><summary>Carteiras inativas (${ina.length})</summary>${ina.map(w=>`<div class="row"><span>${esc(w.name)}</span><button class="x" data-wr="${w.id}">Reativar</button></div>`).join("")}</details>`:""}</div>`);
+  const say=t=>{$("wmsg").className="neg";$("wmsg").textContent=t;};
+  const redo=async t=>{await loadWallets();$("wcard").remove();drawWal(a,t);};
+  const err=e=>e.message.includes("wallets_acc_name_uq")?"Já existe uma carteira ativa com esse nome.":"Erro: "+e.message;
+  const dup=(n,except)=>S.wallets.some(w=>w.account_id===a.id&&w.is_active&&w.id!==except&&w.name.trim().toLowerCase()===n.toLowerCase());
+  const upd=async(id,patch,t)=>{const {error}=await sb.from("wallets").update(patch).eq("id",id);if(error)return say(err(error));await redo(t);};
+  document.querySelectorAll("[data-wn]").forEach(el=>el.onchange=()=>{const n=el.value.trim();
+    if(!n)return say("Informe o nome da carteira.");if(dup(n,el.dataset.wn))return say("Já existe uma carteira ativa com esse nome.");upd(el.dataset.wn,{name:n},"Nome salvo ✓");});
+  document.querySelectorAll("[data-we]").forEach(el=>el.onchange=()=>{const s=el.value.trim(),v=s?num(s):null;
+    if(s&&!(v>0))return say("Valor esperado inválido.");upd(el.dataset.we,{expected_amount:v},"Valor salvo ✓");});
+  document.querySelectorAll("[data-wm]").forEach(el=>el.onchange=()=>upd(el.dataset.wm,{credit_month:el.value?+el.value:null},"Mês salvo ✓"));
+  document.querySelectorAll("[data-wi]").forEach(b=>b.onclick=()=>{const id=b.dataset.wi,bal=S.wbal[id]||0;
+    if(Math.abs(bal)>=0.005)return say(`O saldo é ${fmt(bal,cur)}. Só é possível inativar carteira com saldo zero.`);
+    if(!confirm("Inativar esta carteira?"))return;upd(id,{is_active:false},"Carteira inativada ✓");});
+  document.querySelectorAll("[data-wr]").forEach(b=>b.onclick=()=>{if(dup(S.wallets.find(w=>w.id===b.dataset.wr).name,b.dataset.wr))return say("Já existe uma carteira ativa com esse nome.");upd(b.dataset.wr,{is_active:true},"Carteira reativada ✓");});
+  $("wadd").onclick=async()=>{const n=$("wnn").value.trim(),s=$("wne").value.trim(),v=s?num(s):null;
+    if(!n)return say("Informe o nome da carteira.");if(dup(n))return say("Já existe uma carteira ativa com esse nome.");
+    if(s&&!(v>0))return say("Valor esperado inválido.");
+    const {error}=await sb.from("wallets").insert({household_id:S.hid,account_id:a.id,name:n,expected_amount:v,credit_month:$("wnm").value?+$("wnm").value:null});
+    if(error)return say(err(error));await redo("Carteira criada ✓");};
 }
 
 sb.auth.getSession().then(({data:{session}})=>session?start():show("login"));
