@@ -360,7 +360,7 @@ async function viewList(){
   let q=sb.from("transactions")
     .select("id,account_id,statement_month,card_holder_id,wallet_id,date,amount,currency,description,status,installment_number,installment_total,installment_group_id,transfer_group_id,categories(name),accounts!inner(name,household_id)")
     .eq("accounts.household_id",S.hid);
-  let sq=sb.from("transactions").select("amount,fx_rate_to_base,accounts!inner(household_id)").eq("accounts.household_id",S.hid).is("transfer_group_id",null);
+  let sq=sb.from("transactions").select("amount,fx_rate_to_base,transfer_group_id,accounts!inner(household_id)").eq("accounts.household_id",S.hid);
   if(S.fAcc){q=q.eq("account_id",S.fAcc);sq=sq.eq("account_id",S.fAcc);}
   const mon=S.lper==="mon",m0=S.lmon||(S.lmon=today().slice(0,8)+"01");
   const fc=S.fAcc&&S.accounts.find(a=>a.id===S.fAcc&&a.type==="credit_card");
@@ -371,11 +371,34 @@ async function viewList(){
     S.fAcc?sb.from("account_balances").select("balance,currency").eq("account_id",S.fAcc).maybeSingle():Promise.resolve({data:null}),mon?sq:Promise.resolve({data:null})]);
   if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
   const bal=bl.data;
-  const ent=(sm.data||[]).reduce((r,x)=>{const v=Number(x.amount)*Number(x.fx_rate_to_base||1);return v>0?[r[0]+v,r[1]]:[r[0],r[1]+v];},[0,0]);
+  const ent=(sm.data||[]).reduce((r,x)=>{const v=Number(x.amount)*Number(x.fx_rate_to_base||1);if(x.transfer_group_id){r[2]+=v;return r;}return v>0?[r[0]+v,r[1],r[2]]:[r[0],r[1]+v,r[2]];},[0,0,0]);
+  const tr={cards:{},inn:0,out:0};let prev=0,prevOk=false;
+  if(mon&&S.fAcc&&!fc){
+    const {data:pc}=await sb.from("balance_closings").select("reported_balance").eq("account_id",S.fAcc).eq("ref_month",mAdd(m0,-1)).maybeSingle();
+    if(pc){prev=Number(pc.reported_balance)||0;prevOk=true;}
+    const ids=[...new Set((sm.data||[]).filter(x=>x.transfer_group_id).map(x=>x.transfer_group_id))],oth={};
+    for(let i=0;i<ids.length;i+=100){
+      const {data:o}=await sb.from("transactions").select("transfer_group_id,account_id").in("transfer_group_id",ids.slice(i,i+100)).neq("account_id",S.fAcc);
+      (o||[]).forEach(x=>{oth[x.transfer_group_id]=x.account_id;});}
+    (sm.data||[]).forEach(x=>{if(!x.transfer_group_id)return;
+      const v=Number(x.amount)*Number(x.fx_rate_to_base||1),oa=S.accounts.find(a=>a.id===oth[x.transfer_group_id]);
+      if(oa&&oa.type==="credit_card")tr.cards[oa.id]=(tr.cards[oa.id]||0)+v;else if(v>0)tr.inn+=v;else tr.out+=v;});}
+  const sc=v=>v<0?"neg":"pos",tot=ent[0]+ent[1]+ent[2],ctot=Object.values(tr.cards).reduce((r,v)=>r+v,0);
+  let sumHtml="";
+  if(mon&&fc)sumHtml=`<div class="row"><b>Total da fatura</b><b>${mm(-(ent[0]+ent[1]))}</b></div><div class="mu">Compras da fatura, sem os pagamentos.</div>`;
+  else if(mon&&S.fAcc)sumHtml=`<div class="row"><span class="mu">Saldo do mês anterior${prevOk?"":" (sem fechamento)"}</span><span class="${sc(prev)}">${mm(prev)}</span></div>
+    <div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div>
+    <div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div>
+    <div class="row"><span class="mu">Cartões do mês</span><span class="${sc(ctot)}">${mm(ctot)}</span></div>
+    ${Object.keys(tr.cards).map(id=>`<div class="row" style="padding-left:14px"><span class="mu">${esc(S.accounts.find(a=>a.id===id).name)}</span><span class="${sc(tr.cards[id])}">${mm(tr.cards[id])}</span></div>`).join("")}
+    <div class="row"><span class="mu">Transferências de entrada</span><span class="pos">${mm(tr.inn)}</span></div>
+    <div class="row"><span class="mu">Transferências de saída</span><span class="neg">${mm(tr.out)}</span></div>
+    <div class="row"><b>Saldo final</b><b class="${sc(tot+prev)}">${mm(tot+prev)}</b></div><div class="mu">Saldo do mês anterior + receitas + despesas + cartões + transferências.</div>`;
+  else if(mon)sumHtml=`<div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div><div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div><div class="row"><b>Resultado</b><b class="${sc(ent[0]+ent[1])}">${mm(ent[0]+ent[1])}</b></div><div class="mu">Receitas, despesas e resultado não incluem transferências.</div><div class="row"><span class="mu">Transferências</span><span class="${sc(ent[2])}">${mm(ent[2])}</span></div><div class="row"><b>Variação no mês</b><b class="${sc(tot)}">${mm(tot)}</b></div>`;
   $("main").innerHTML=`<div class="card"><div class="seg"><button id="lpm" class="${mon?"on":""}">Mês</button><button id="lpa" class="${mon?"":"on"}">Tudo</button></div>
     ${mon?`<div class="row" style="align-items:center"><button class="x" id="lpp">‹</button><b>${fc?"Fatura de ":""}${mlab(m0)}</b><button class="x" id="lpn">›</button></div>`:""}
     <label style="margin-top:0">Conta<select id="lfa"><option value="">Todas as contas</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.fAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
-    ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}${mon&&fc?`<div class="row"><b>Total da fatura</b><b>${mm(-(ent[0]+ent[1]))}</b></div><div class="mu">Compras da fatura, sem os pagamentos.</div>`:mon?`<div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div><div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div><div class="row"><b>Resultado</b><b class="${ent[0]+ent[1]<0?"neg":"pos"}">${mm(ent[0]+ent[1])}</b></div><div class="mu">Sem transferências.</div>`:""}</div>
+    ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}${sumHtml}</div>
   <div class="card">${data.length?data.map(t=>`<div class="row"><div>
     <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
     <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.statement_month&&S.accounts.some(a=>a.id===t.account_id&&a.type==="credit_card")?" · fatura "+t.statement_month.slice(5,7)+"/"+t.statement_month.slice(0,4):""}${t.card_holder_id&&holdersOf(t.account_id).length>1?" · "+esc(holderName(t.card_holder_id)):""}${t.wallet_id?" · "+esc(walletName(t.wallet_id)):""}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
