@@ -16,7 +16,7 @@ h1{font-size:1.2rem;margin:0;padding:14px 16px;display:flex;justify-content:spac
 main,.wrap{max-width:560px;margin:0 auto;padding:0 12px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
 label{display:block;font-size:.8rem;color:var(--mu);margin-top:10px}
-input,select{width:100%;font:inherit;padding:11px;margin-top:4px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx)}
+input,select,textarea{width:100%;font:inherit;padding:11px;margin-top:4px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx)}
 button{font:inherit;border:1px solid var(--bd);border-radius:10px;padding:11px 14px;background:var(--card);color:var(--tx)}
 .pri{width:100%;margin-top:14px;background:var(--ac);color:#fff;border:0;font-weight:600}
 .seg{display:flex;gap:8px}.seg button{flex:1;min-width:0;padding:11px 4px;font-size:.92rem}.seg .on{background:var(--ac);color:#fff;border-color:var(--ac)}
@@ -69,13 +69,13 @@ const fmt=(v,c)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:(c||"B
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
 const num=s=>{s=s.trim();return s.includes(",")?parseFloat(s.replace(/\./g,"").replace(",",".")):parseFloat(s)};
 const TYPES={checking:"Conta corrente",cash:"Dinheiro",credit_card:"Cartão de crédito",investment:"Investimento",loan:"Empréstimo",financing:"Financiamento",fgts:"FGTS",pension:"Previdência",other:"Outra",benefit:"Benefício (vale)"};
-let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"dash",rt:false,lastAcc:null,ed:null,par:null,fAcc:null,lim:50,trFrom:"acc",catsAll:[],ce:null,me:null,catFrom:"acc",cmsg:"",loans:[],parFrom:"list",pmsg:"",antId:null,cards:[],lper:"mon",lmon:null,fatAcc:null,fatMon:null,cloAcc:null,cloMon:null,acmId:null,holders:[],fatH:null,wallets:[],wbal:{}};
+let S={tr:null,qs:[],qa:{},pre:null,uid:null,hs:[],hid:null,accounts:[],cats:[],kind:"expense",tab:"dash",rt:false,lastAcc:null,ed:null,par:null,fAcc:null,lim:50,trFrom:"acc",catsAll:[],ce:null,me:null,catFrom:"acc",cmsg:"",loans:[],parFrom:"list",pmsg:"",antId:null,cards:[],lper:"mon",lmon:null,fatAcc:null,fatMon:null,cloAcc:null,cloMon:null,acmId:null,holders:[],fatH:null,wallets:[],wbal:{},dper:"mon",dfrom:null,dto:null,splashDone:false,vid:null};
 const show=v=>{["login","onboard","app"].forEach(x=>$(x).hidden=x!==v);$("hb").hidden=v!=="app";};
 
 $("lf").onsubmit=async e=>{e.preventDefault();
   const {error}=await sb.auth.signInWithPassword({email:$("em").value,password:$("pw").value});
   error?$("lmsg").textContent="E-mail ou senha incorretos.":start();};
-sb.auth.onAuthStateChange(ev=>{if(ev==="SIGNED_OUT"){S.hid=null;show("login");}});
+sb.auth.onAuthStateChange(ev=>{if(ev==="SIGNED_OUT"){S.hid=null;S.splashDone=false;show("login");}});
 
 async function loadHouseholds(){
   const {data:{user}}=await sb.auth.getUser();
@@ -98,7 +98,7 @@ async function pick(id,keep){
   S.hid=id;S.lastAcc=null;S.pre=null;S.ed=null;S.par=null;S.fAcc=null;S.lim=50;S.parFrom="list";S.antId=null;S.fatAcc=null;S.fatMon=null;S.lmon=null;S.cloAcc=null;S.cloMon=null;S.acmId=null;S.fatH=null;
   try{localStorage.setItem("hid",id)}catch(e){}
   $("hb").textContent="⇄ "+S.hs.find(x=>x.id===id).name;
-  show("app");await loadRef();go(keep&&["dash","add","list","acc"].includes(S.tab)?S.tab:"dash");
+  show("app");const first=!S.splashDone;S.splashDone=true;const rp=loadRef();if(first)await splash();await rp;go(keep&&["dash","add","list","acc"].includes(S.tab)?S.tab:"dash");
 }
 async function loadRef(){
   const [a]=await Promise.all([
@@ -168,10 +168,10 @@ $("jn").onclick=()=>onb("join_household",{p_code:$("cd").value.trim(),p_display_
 $("hb").onclick=()=>go("fam");
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{if(b.dataset.t==="list")S.lim=50;go(b.dataset.t);});
-const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc",fat:"acc",clo:"acc",acm:"acc"})[t]||t;
+const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc",fat:"acc",clo:"acc",acm:"acc",ver:"acc"})[t]||t;
 function go(t){S.tab=t;
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===NAVOF(t)));
-  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas,fat:viewFat,clo:viewClo,acm:viewAcm})[t]();}
+  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas,fat:viewFat,clo:viewClo,acm:viewAcm,ver:viewVer})[t]();}
 
 function viewFam(){
   $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
@@ -436,7 +436,7 @@ async function viewAcc(){
    <label>Cartão: dia de fechamento<input id="acl" type="number" min="1" max="31"></label>
    <label>Cartão: dia de vencimento<input id="adu" type="number" min="1" max="31"></label>
    <button class="pri" id="ads">Adicionar</button><p id="amsg" class="neg"></p></div>
-  <div class="card"><button class="sec" id="gcl" style="margin-top:0">🔒 Fechamento mensal</button><button class="sec" id="gc">🏷 Gerenciar categorias</button></div>
+  <div class="card"><button class="sec" id="gcl" style="margin-top:0">🔒 Fechamento mensal</button><button class="sec" id="gc">🏷 Gerenciar categorias</button><button class="sec" id="gv">📖 Versículos</button></div>
   ${(ina||[]).length?`<div class="card"><details><summary>Contas inativas (${ina.length})</summary>${ina.map(a=>`<div class="row"><span>${esc(a.name)}</span><button class="x" data-ra="${a.id}">Reativar</button></div>`).join("")}</details></div>`:""}
   <div class="card mu">Código de convite da família: <b>${esc(h?.invite_code)}</b><br><br><button id="out">Sair</button></div>`;
   $("ads").onclick=async()=>{
@@ -446,7 +446,7 @@ async function viewAcc(){
     if(error)return $("amsg").textContent=error.message;
     if(card){const r=await sb.from("credit_cards").insert({household_id:S.hid,account_id:na.id,closing_day:cl,due_day:du});if(r.error)return $("amsg").textContent="Conta criada, mas o cartão não: "+r.error.message;await sb.from("card_holders").insert({household_id:S.hid,account_id:na.id,name:"Titular"});}
     await loadRef();viewAcc();};
-  $("gc").onclick=()=>{S.catFrom="acc";go("cat");};
+  $("gc").onclick=()=>{S.catFrom="acc";go("cat");};$("gv").onclick=()=>go("ver");
   document.querySelectorAll("[data-cr]").forEach(b=>b.onclick=()=>{const w=S.wallets.find(x=>x.id===b.dataset.cr);
     S.kind="income";S.pre={acc:w.account_id,wal:w.id,amt:w.expected_amount,desc:"Crédito "+w.name,cat:lsGet("walcat_"+w.id)||null};go("add");});
   document.querySelectorAll("[data-mg]").forEach(b=>b.onclick=()=>{S.acmId=b.dataset.mg;go("acm");});
@@ -457,6 +457,11 @@ async function viewAcc(){
   document.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>{S.fatAcc=b.dataset.pay;S.fatMon=null;go("fat");});
 }
 const f2=v=>Math.abs(Number(v)).toFixed(2).replace(".",",");
+const dper=()=>{const t=today(),y=+t.slice(0,4),m0=t.slice(0,8)+"01";
+  if(S.dper==="year")return [y+"-01-01",(y+1)+"-01-01"];
+  if(S.dper==="all")return ["1900-01-01","3000-01-01"];
+  if(S.dper==="cus"&&S.dfrom&&S.dto){const e=new Date(S.dto+"T12:00:00");e.setDate(e.getDate()+1);return [S.dfrom,e.toISOString().slice(0,10)];}
+  return [m0,mAdd(m0,1)];};
 
 async function viewEdit(){
   const {data:t,error}=await sb.from("transactions")
@@ -571,12 +576,13 @@ async function viewPar(msg){
 const mm=v=>fmt(Number(v)||0,"BRL");
 async function viewDash(){
   $("main").innerHTML='<div class="card mu">Carregando…</div>';
-  const ano=today().slice(0,4),per=["weekly","monthly","yearly"],hid=S.hid;
-  const [bl,un,lp,lm,...ps]=await Promise.all([
+  const ano=today().slice(0,4),per=["weekly","monthly","yearly"],hid=S.hid,pr=dper();
+  const [bl,un,lp,lm,rs,...ps]=await Promise.all([
     sb.from("account_balances").select("account_id,type,balance_base").eq("household_id",hid),
     sb.from("transactions").select("amount,fx_rate_to_base").eq("household_id",hid).is("category_id",null).is("transfer_group_id",null).lt("amount",0).gte("date",ano+"-01-01").lte("date",ano+"-12-31"),
     sb.from("loan_progress").select("*").eq("household_id",hid).eq("is_active",true).order("name"),
     sb.from("loan_monthly_commitment").select("month,amount").eq("household_id",hid),
+    sb.rpc("period_summary",{p_household:hid,p_from:pr[0],p_to:pr[1]}),
     ...per.map(p=>sb.rpc("budget_progress",{p_household:hid,p_ref:today(),p_period:p}))]);
   if(S.tab!=="dash"||S.hid!==hid)return;
   const err=[bl,un,...ps].find(r=>r.error);
@@ -606,18 +612,25 @@ async function viewDash(){
       <div class="bar"><i style="width:${pct}%;background:var(--ac)"></i></div>
       ${rem>0?`<div class="mu">Próxima (${l.next_number}/${tot}): ${mm(l.next_amount)} em ${fdt(l.next_date)} · ainda a pagar ${mm(l.remaining_amount)}</div>`:""}</div>`;}).join("")}
     ${mk.length?`<details><summary>Parcelas por mês (todos os contratos)</summary>${mk.map(k=>`<div class="row"><span>${mlab(k)}</span><b>${mm(LM[k])}</b></div>`).join("")}<div class="mu">Soma as parcelas do mês, pagas e previstas. Valores futuros são estimativas.</div></details>`:""}</div>`:"";
+  const RS=(rs.data&&rs.data[0])||null,inc=RS?Number(RS.income):0,exp=RS?Number(RS.expense):0,PL={mon:"Mês",year:"Ano",all:"Tudo",cus:"Período"};
+  const perHtml=`<div class="card"><b>Resultado do período</b><div class="chips" style="margin-top:8px">${Object.keys(PL).map(k=>`<button data-dp="${k}" class="${S.dper===k?"on":""}">${PL[k]}</button>`).join("")}</div>
+   ${S.dper==="cus"?`<div style="display:flex;gap:8px"><label style="flex:1">De<input type="date" id="pdf" value="${S.dfrom||""}"></label><label style="flex:1">Até<input type="date" id="pdt" value="${S.dto||""}"></label></div>${S.dfrom&&S.dto?"":'<p class="mu">Informe as duas datas (por enquanto mostra o mês atual).</p>'}`:""}
+   ${rs.error?`<p class="neg">${esc(rs.error.message)}</p><p class="mu">Rode o script painel_periodo.sql no Supabase.</p>`:`<div class="row"><span>Receitas</span><span class="pos">${mm(inc)}</span></div><div class="row"><span>Despesas</span><span class="neg">${mm(exp)}</span></div><div class="row"><b>Resultado</b><b class="${inc+exp<0?"neg":"pos"}">${mm(inc+exp)}</b></div><div class="mu">Sem transferências. Compras no cartão contam pela data da compra.</div>`}</div>`;
   $("main").innerHTML=`<div class="card"><div class="mu">Saldo geral</div>
     <div style="font-size:1.6rem;font-weight:700" class="${geral<0?"neg":"pos"}">${mm(geral)}</div>
     <div class="row" style="margin-top:8px"><span>Disponível (corrente e dinheiro)</span><span class="${disp<0?"neg":""}">${mm(disp)}</span></div>
     <div class="row"><span>Cartões (dívida atual)</span><span class="${cart<0?"neg":""}">${mm(cart)}</span></div>
     ${B.some(a=>a.type==="benefit")?`<div class="row"><span>Benefícios (vales)</span><span class="${ben<0?"neg":""}">${mm(ben)}</span></div>`:""}
     <div class="row"><span>Demais contas</span><span class="${demais<0?"neg":""}">${mm(demais)}</span></div></div>
+  ${perHtml}
   ${nU?`<div class="card" style="border-color:var(--yel)">⚠️ <b>${nU} despesa(s) sem categoria em ${ano}</b>, somando ${mm(totU)}. Elas não entram nas metas. Corrija pelo ✏️ na tela Lançamentos.<br><button class="sec" id="gu">Ver lançamentos</button></div>`:""}
   ${tem?secs:'<div class="card">Você ainda não tem metas. Crie a primeira para acompanhar seus gastos com semáforo.</div>'}
   ${loanHtml}
   <button class="sec" id="gm">🎯 Gerenciar metas</button>
   <button class="sec" id="gl">🏦 Financiamentos e empréstimos</button>`;
   $("gm").onclick=()=>go("metas");
+  document.querySelectorAll("[data-dp]").forEach(b=>b.onclick=()=>{S.dper=b.dataset.dp;viewDash();});
+  if($("pdf")){$("pdf").onchange=()=>{S.dfrom=$("pdf").value;viewDash();};$("pdt").onchange=()=>{S.dto=$("pdt").value;viewDash();};}
   $("gl").onclick=()=>go("loans");
   if($("gu"))$("gu").onclick=()=>{S.lim=50;S.lper="all";go("list");};
 }
@@ -1029,6 +1042,73 @@ function drawWal(a,m){
     if(s&&!(v>0))return say("Valor esperado inválido.");
     const {error}=await sb.from("wallets").insert({household_id:S.hid,account_id:a.id,name:n,expected_amount:v,credit_month:$("wnm").value?+$("wnm").value:null});
     if(error)return say(err(error));await redo("Carteira criada ✓");};
+}
+
+/* ================= VERSÍCULOS ================= */
+const refv=v=>`${v.book} ${v.chapter}:${v.verse_start}${v.verse_end?"-"+v.verse_end:""}`;
+// scope: "own" = só a família atual | "all" = todas as famílias das quais a pessoa faz parte
+const famName=id=>(S.hs.find(h=>h.id===id)||{}).name||"Família";
+function verQuery(scope,onlyActive){
+  let q=sb.from("bible_verses").select("*");
+  q=scope==="all"?q.in("household_id",S.hs.map(h=>h.id)):q.eq("household_id",S.hid);
+  if(onlyActive)q=q.eq("is_active",true);
+  return q.order("created_at").order("id");
+}
+async function splash(){
+  const s=await sb.from("verse_settings").select("*").eq("household_id",S.hid).eq("user_id",S.uid).maybeSingle();
+  const st=s.data;
+  if(st&&st.splash===false)return;
+  const scope=st&&st.verse_scope==="all"?"all":"own";
+  const v=await verQuery(scope,true);
+  const L=v.data||[];
+  if(v.error||!L.length)return;
+  const mode=st?st.verse_order:"random",last=st?st.last_id:null;let x;
+  if(mode==="sequential"){const i=L.findIndex(a=>a.id===last);x=L[(i+1)%L.length];}
+  else{const c=L.length>1?L.filter(a=>a.id!==last):L;x=c[Math.floor(Math.random()*c.length)];}
+  sb.from("verse_settings").upsert({household_id:S.hid,user_id:S.uid,verse_order:mode,splash:st?st.splash:true,verse_scope:scope,last_id:x.id},{onConflict:"household_id,user_id"}).then(()=>{});
+  const d=document.createElement("div");
+  d.style.cssText="position:fixed;inset:0;z-index:99;background:var(--bg);color:var(--tx);display:flex;justify-content:center;align-items:center;padding:calc(32px + env(safe-area-inset-top)) 28px 32px;text-align:center;cursor:pointer";
+  d.innerHTML=`<div style="max-width:520px"><div style="font-size:1.3rem;line-height:1.6;font-style:italic">“${esc(x.text)}”</div><div style="margin-top:20px;font-weight:700;color:var(--ac)">${esc(refv(x))}</div><div class="mu" style="margin-top:40px">Toque para continuar</div></div>`;
+  document.body.appendChild(d);
+  return new Promise(res=>{d.onclick=()=>{d.remove();res();};});
+}
+async function viewVer(msg){
+  const s=await sb.from("verse_settings").select("*").eq("household_id",S.hid).eq("user_id",S.uid).maybeSingle();
+  const scope=s.data&&s.data.verse_scope==="all"?"all":"own";
+  const v=await verQuery(scope,false);
+  if(v.data)v.data.sort((a,b)=>a.book.localeCompare(b.book,"pt")||a.chapter-b.chapter||a.verse_start-b.verse_start);
+  if(S.tab!=="ver")return;
+  if(v.error){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button><p class="neg">${esc(v.error.message)}</p><p class="mu">Se a tabela não existe, rode o script versiculos.sql no Supabase.</p></div>`;$("bk").onclick=()=>go("acc");return;}
+  const L=v.data||[],st=s.data||{verse_order:"random",splash:true},multi=S.hs.length>1,E=L.find(x=>x.id===S.vid)||{};
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Versículos</b>
+   <label>Ordem de exibição<select id="vo"><option value="random" ${st.verse_order==="random"?"selected":""}>Aleatória</option><option value="sequential" ${st.verse_order==="sequential"?"selected":""}>Sequencial</option></select></label>
+   ${multi?`<label>Versículos exibidos<select id="vsc"><option value="own" ${scope==="own"?"selected":""}>Apenas da família atual (${esc(famName(S.hid))})</option><option value="all" ${scope==="all"?"selected":""}>De todas as minhas famílias</option></select></label>`:""}
+   <label class="ck"><input type="checkbox" id="vs" ${st.splash!==false?"checked":""}> Mostrar versículo ao abrir o app</label>
+   <button class="sec" id="vsv">Salvar configuração</button></div>
+  <div class="card"><b>${E.id?"Editar versículo":"Novo versículo"}</b>
+   <label>Livro<input id="vb" value="${esc(E.book||"")}" placeholder="Ex.: Mateus"></label>
+   <div style="display:flex;gap:8px"><label style="flex:1">Capítulo<input id="vc" type="number" min="1" value="${E.chapter||""}"></label><label style="flex:1">Versículo<input id="vv" type="number" min="1" value="${E.verse_start||""}"></label><label style="flex:1">Até (opc.)<input id="ve" type="number" min="1" value="${E.verse_end||""}"></label></div>
+   <label>Texto<textarea id="vtx" rows="5">${esc(E.text||"")}</textarea></label>
+   <button class="pri" id="vsave">${E.id?"Salvar alterações":"Adicionar"}</button>${E.id?'<button class="sec" id="vcan">Cancelar edição</button>':""}
+   <p id="vm" class="${msg?"pos":"neg"}">${esc(msg||"")}</p></div>
+  <div class="card"><b>Cadastrados (${L.length})</b>${L.map(x=>`<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(refv(x))}${x.is_active?"":" (inativo)"}${scope==="all"&&multi?` <span class="mu">· ${esc(famName(x.household_id))}</span>`:""}</b><span style="white-space:nowrap"><button class="x" data-ve="${x.id}">✏️</button><button class="x" data-vt="${x.id}">${x.is_active?"Desativar":"Ativar"}</button><button class="x" data-vd="${x.id}">✕</button></span></div><div class="mu">${esc(x.text)}</div></div>`).join("")||'<p class="mu">Nenhum versículo ainda.</p>'}</div>`;
+  const say=t=>{$("vm").className="neg";$("vm").textContent=t;};
+  $("bk").onclick=()=>{S.vid=null;go("acc");};
+  $("vsv").onclick=async()=>{const {error}=await sb.from("verse_settings").upsert({household_id:S.hid,user_id:S.uid,verse_order:$("vo").value,splash:$("vs").checked,verse_scope:$("vsc")?$("vsc").value:scope,last_id:st.last_id||null},{onConflict:"household_id,user_id"});
+    if(error)return say("Erro: "+error.message);viewVer("Configuração salva ✓");};
+  $("vsave").onclick=async()=>{
+    const b=$("vb").value.trim(),c=+$("vc").value,vs=+$("vv").value,ve=$("ve").value?+$("ve").value:null,t=$("vtx").value.trim();
+    if(!b||!(c>=1)||!(vs>=1)||!t)return say("Preencha livro, capítulo, versículo e texto.");
+    if(ve!==null&&ve<=vs)return say("O versículo final deve ser maior que o inicial (ou deixe em branco).");
+    const row={household_id:E.id?E.household_id:S.hid,book:b,chapter:c,verse_start:vs,verse_end:ve,text:t};
+    const {error}=E.id?await sb.from("bible_verses").update(row).eq("id",E.id):await sb.from("bible_verses").insert(row);
+    if(error)return say("Erro: "+error.message);S.vid=null;viewVer("Salvo ✓");};
+  if($("vcan"))$("vcan").onclick=()=>{S.vid=null;viewVer();};
+  document.querySelectorAll("[data-ve]").forEach(b=>b.onclick=()=>{S.vid=b.dataset.ve;viewVer().then(()=>window.scrollTo(0,0));});
+  document.querySelectorAll("[data-vt]").forEach(b=>b.onclick=async()=>{const x=L.find(y=>y.id===b.dataset.vt);
+    const {error}=await sb.from("bible_verses").update({is_active:!x.is_active}).eq("id",x.id);if(error)return say("Erro: "+error.message);viewVer();});
+  document.querySelectorAll("[data-vd]").forEach(b=>b.onclick=async()=>{if(!confirm("Apagar este versículo?"))return;
+    const {error}=await sb.from("bible_verses").delete().eq("id",b.dataset.vd);if(error)return say("Erro: "+error.message);viewVer();});
 }
 
 sb.auth.getSession().then(({data:{session}})=>session?start():show("login"));
