@@ -465,7 +465,7 @@ const dper=()=>{const t=today(),y=+t.slice(0,4),m0=t.slice(0,8)+"01";
 
 async function viewEdit(){
   const {data:t,error}=await sb.from("transactions")
-    .select("id,account_id,card_holder_id,wallet_id,date,amount,currency,description,category_id,status,transfer_group_id,installment_group_id,installment_number,installment_total,accounts(name)")
+    .select("id,account_id,statement_month,card_holder_id,wallet_id,date,amount,currency,description,category_id,status,transfer_group_id,installment_group_id,installment_number,installment_total,accounts(name)")
     .eq("id",S.ed).single();
   if(error||!t){alert("Lançamento não encontrado.");return go("list");}
   drawEdit(t,{kind:t.amount<0?"expense":"income",val:f2(t.amount),date:t.date,cat:t.category_id||"",acc:t.account_id,desc:t.description||"",hold:t.card_holder_id||"",wal:t.wallet_id||"",all:false});
@@ -473,6 +473,9 @@ async function viewEdit(){
 function drawEdit(t,D){
   const tr=!!t.transfer_group_id,pa=!!t.installment_group_id,cur=t.currency.trim(),lo=pa?S.loans.find(l=>l.installment_group_id===t.installment_group_id):null;
   const ben=(S.accounts.find(a=>a.id===t.account_id)||{}).type==="benefit";
+  /* fatura ajustada à mão = mês da fatura gravado difere do calculado pela data original (o banco recalcula ao mudar data/conta) */
+  const ccard=S.cards.find(c=>c.account_id===t.account_id),isCard=(S.accounts.find(a=>a.id===t.account_id)||{}).type==="credit_card";
+  const manFat=!tr&&isCard&&!!ccard&&!!t.statement_month&&t.statement_month!==stm(ccard,t.date);
   const accs=S.accounts.filter(a=>a.currency.trim()===cur&&(ben?a.id===t.account_id:a.type!=="benefit")).map(a=>({id:a.id,name:a.name}));
   if(!accs.some(a=>a.id===t.account_id))accs.push({id:t.account_id,name:t.accounts?.name||"Conta"});
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Editar lançamento</b>
@@ -487,12 +490,14 @@ function drawEdit(t,D){
    ${!tr&&ben?`<label>Carteira<select id="ew">${S.wallets.filter(w=>w.account_id===t.account_id&&(w.is_active||w.id===D.wal)).map(w=>`<option value="${w.id}" ${w.id===D.wal?"selected":""}>${esc(w.name)}${w.is_active?"":" (inativa)"}</option>`).join("")}</select></label>`:""}
    <label>Descrição<input id="edsc" value="${esc(D.desc)}"></label>
    <label>Data<input id="edt" type="date" value="${esc(D.date)}"></label>
+   ${manFat?`<label class="ck" id="efw" ${D.date===t.date?"hidden":""}><input type="checkbox" id="efat" ${D.keepFat===false?"":"checked"}> Manter a fatura de ${esc(mlab(t.statement_month))} (ajustada à mão)</label>`:""}
    ${lo?`<label class="ck"><input type="checkbox" id="efol" ${D.fol?"checked":""}> Se trocar a conta, aplicar também às parcelas seguintes ainda previstas</label>`:""}
    ${pa?`<label class="ck"><input type="checkbox" id="eall" ${D.all?"checked":""}> Aplicar categoria e descrição a todas as parcelas ${lo?"do contrato":"desta compra"}</label>
      <button class="lk" id="epar">Editar todas as parcelas ${lo?"do contrato":"desta compra"}</button>`:""}
    <button class="pri" id="es">Salvar alterações</button><p id="emsg" class="neg"></p></div>`;
   const grab=()=>{D.val=$("ev").value;D.date=$("edt").value;D.desc=$("edsc").value;if($("eh"))D.hold=$("eh").value;if($("ew"))D.wal=$("ew").value;
-    if($("ec"))D.cat=$("ec").value;if($("ea"))D.acc=$("ea").value;if($("eall"))D.all=$("eall").checked;if($("efol"))D.fol=$("efol").checked;};
+    if($("ec"))D.cat=$("ec").value;if($("ea"))D.acc=$("ea").value;if($("eall"))D.all=$("eall").checked;if($("efol"))D.fol=$("efol").checked;if($("efat"))D.keepFat=$("efat").checked;};
+  if($("efat"))$("edt").oninput=()=>{$("efw").hidden=$("edt").value===t.date;};
   $("bk").onclick=()=>go("list");
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{grab();D.kind=b.dataset.k;D.cat="";drawEdit(t,D);});
   if($("epar"))$("epar").onclick=()=>{S.par=t.installment_group_id;S.parFrom="list";go("par");};
@@ -515,6 +520,9 @@ function drawEdit(t,D){
         r=await sb.rpc("change_loan_account",{p_contract_id:lo.id,p_installment_number:t.installment_number,p_account_id:$("ea").value,p_following:$("efol").checked,p_set_default:false});
     }
     if(r.error){$("es").disabled=false;return $("emsg").textContent="Erro: "+r.error.message;}
+    if(manFat&&$("efat")&&$("efat").checked&&date!==t.date&&$("ea").value===t.account_id){
+      const r2=await sb.from("transactions").update({statement_month:t.statement_month}).eq("id",t.id);
+      if(r2.error){$("es").disabled=false;return $("emsg").textContent="A data foi salva, mas não consegui manter a fatura de "+mlab(t.statement_month)+": "+r2.error.message+" Ajuste pelas setas na tela Fatura.";}}
     S.ed=null;go("list");};
 }
 
