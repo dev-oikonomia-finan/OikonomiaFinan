@@ -123,6 +123,10 @@ const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agos
 const walWhen=w=>w.credit_month?"em "+MESES[w.credit_month-1]:"todo mês";
 const lsGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+// modo do cartão nos resumos: "stm" = pelo mês da fatura (padrão) | "buy" = pela data da compra
+const cm=()=>lsGet("cardmode")==="buy"?"buy":"stm";
+// Lançamentos, Todas as contas: "date" = por data (padrão) | "acc" = agrupado por conta
+const lg=()=>lsGet("listgrp")==="acc"?"acc":"date";
 const holdersOf=id=>S.holders.filter(h=>h.account_id===id&&h.is_active);
 const holderName=id=>(S.holders.find(h=>h.id===id)||{}).name||"";
 async function loadCats(){
@@ -168,10 +172,10 @@ $("jn").onclick=()=>onb("join_household",{p_code:$("cd").value.trim(),p_display_
 $("hb").onclick=()=>go("fam");
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{if(b.dataset.t==="list")S.lim=50;go(b.dataset.t);});
-const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc",fat:"acc",clo:"acc",acm:"acc",ver:"acc"})[t]||t;
+const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc",fat:"acc",clo:"acc",acm:"acc",ver:"acc",inv:"acc"})[t]||t;
 function go(t){S.tab=t;
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===NAVOF(t)));
-  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas,fat:viewFat,clo:viewClo,acm:viewAcm,ver:viewVer})[t]();}
+  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas,fat:viewFat,clo:viewClo,acm:viewAcm,ver:viewVer,inv:viewInv})[t]();}
 
 function viewFam(){
   $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
@@ -360,14 +364,19 @@ async function viewList(){
   let q=sb.from("transactions")
     .select("id,account_id,statement_month,card_holder_id,wallet_id,date,amount,currency,description,status,installment_number,installment_total,installment_group_id,transfer_group_id,categories(name),accounts!inner(name,household_id)")
     .eq("accounts.household_id",S.hid);
-  let sq=sb.from("transactions").select("amount,fx_rate_to_base,transfer_group_id,accounts!inner(household_id)").eq("accounts.household_id",S.hid);
-  if(S.fAcc){q=q.eq("account_id",S.fAcc);sq=sq.eq("account_id",S.fAcc);}
+  let sq=sb.from("transactions").select("amount,fx_rate_to_base,transfer_group_id,accounts!inner(household_id,type,is_active)").eq("accounts.household_id",S.hid);
+  if(S.fAcc){q=q.eq("account_id",S.fAcc);sq=sq.eq("account_id",S.fAcc);}else sq=sq.in("accounts.type",["checking","cash","credit_card","benefit"]).eq("accounts.is_active",true);
   const mon=S.lper==="mon",m0=S.lmon||(S.lmon=today().slice(0,8)+"01");
   const fc=S.fAcc&&S.accounts.find(a=>a.id===S.fAcc&&a.type==="credit_card");
+  const cids=S.accounts.filter(a=>a.type==="credit_card").map(a=>a.id),byStm=mon&&!S.fAcc&&cm()==="stm"&&cids.length>0;
   if(mon){if(fc){q=q.eq("statement_month",m0);sq=sq.eq("statement_month",m0);}
+    else if(byStm){const m1=mAdd(m0,1),L=cids.join(","),
+      f=`and(transfer_group_id.not.is.null,date.gte.${m0},date.lt.${m1}),and(transfer_group_id.is.null,account_id.not.in.(${L}),date.gte.${m0},date.lt.${m1}),and(transfer_group_id.is.null,account_id.in.(${L}),statement_month.gte.${m0},statement_month.lt.${m1})`;
+      q=q.or(f);sq=sq.or(f);}
     else{q=q.gte("date",m0).lt("date",mAdd(m0,1));sq=sq.gte("date",m0).lt("date",mAdd(m0,1));}}
+  const grp=!S.fAcc&&lg()==="acc";
   const [{data,error},bl,sm]=await Promise.all([
-    q.order("date",{ascending:false}).order("created_at",{ascending:false}).limit(S.lim),
+    (grp?q.order("account_id"):q).order("date",{ascending:false}).order("created_at",{ascending:false}).limit(grp&&mon?Math.max(S.lim,500):S.lim),
     S.fAcc?sb.from("account_balances").select("balance,currency").eq("account_id",S.fAcc).maybeSingle():Promise.resolve({data:null}),mon?sq:Promise.resolve({data:null})]);
   if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
   const bal=bl.data;
@@ -385,7 +394,9 @@ async function viewList(){
       if(oa&&oa.type==="credit_card")tr.cards[oa.id]=(tr.cards[oa.id]||0)+v;else if(v>0)tr.inn+=v;else tr.out+=v;});}
   const sc=v=>v<0?"neg":"pos",tot=ent[0]+ent[1]+ent[2],ctot=Object.values(tr.cards).reduce((r,v)=>r+v,0);
   let sumHtml="";
-  if(mon&&fc)sumHtml=`<div class="row"><b>Total da fatura</b><b>${mm(-(ent[0]+ent[1]))}</b></div><div class="mu">Compras da fatura, sem os pagamentos.</div>`;
+  const fi=S.fAcc&&S.accounts.find(a=>a.id===S.fAcc&&a.type==="investment");
+  if(fi)sumHtml=`<div class="mu">Conta de investimento: aqui ficam só aportes e resgates (transferências). Compras, vendas e rendimentos estão em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;
+  else if(mon&&fc)sumHtml=`<div class="row"><b>Total da fatura</b><b>${mm(-(ent[0]+ent[1]))}</b></div><div class="mu">Compras da fatura, sem os pagamentos.</div>`;
   else if(mon&&S.fAcc)sumHtml=`<div class="row"><span class="mu">Saldo do mês anterior${prevOk?"":" (sem fechamento)"}</span><span class="${sc(prev)}">${mm(prev)}</span></div>
     <div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div>
     <div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div>
@@ -394,18 +405,29 @@ async function viewList(){
     <div class="row"><span class="mu">Transferências de entrada</span><span class="pos">${mm(tr.inn)}</span></div>
     <div class="row"><span class="mu">Transferências de saída</span><span class="neg">${mm(tr.out)}</span></div>
     <div class="row"><b>Saldo final</b><b class="${sc(tot+prev)}">${mm(tot+prev)}</b></div><div class="mu">Saldo do mês anterior + receitas + despesas + cartões + transferências.</div>`;
-  else if(mon)sumHtml=`<div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div><div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div><div class="row"><b>Resultado</b><b class="${sc(ent[0]+ent[1])}">${mm(ent[0]+ent[1])}</b></div><div class="mu">Receitas, despesas e resultado não incluem transferências.</div><div class="row"><span class="mu">Transferências</span><span class="${sc(ent[2])}">${mm(ent[2])}</span></div><div class="row"><b>Variação no mês</b><b class="${sc(tot)}">${mm(tot)}</b></div>`;
+  else if(mon)sumHtml=`<div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div><div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div><div class="row"><b>Resultado</b><b class="${sc(ent[0]+ent[1])}">${mm(ent[0]+ent[1])}</b></div><div class="mu">Receitas, despesas e resultado não incluem transferências.</div><div class="seg" style="margin-top:8px"><button id="cmf" class="${cm()==="stm"?"on":""}">Cartão: pela fatura</button><button id="cmb" class="${cm()==="buy"?"on":""}">Cartão: pela compra</button></div><div class="mu">${cm()==="stm"?"Compras no cartão contam no mês da fatura (vencimento), como no extrato. Transferências sempre pela data.":"Compras no cartão contam na data da compra."}</div><div class="row"><span class="mu">Transferências</span><span class="${sc(ent[2])}">${mm(ent[2])}</span></div><div class="row"><b>Variação no mês</b><b class="${sc(tot)}">${mm(tot)}</b></div>`;
+  const rowH=t=>`<div class="row"><div>
+    <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
+    <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.statement_month&&S.accounts.some(a=>a.id===t.account_id&&a.type==="credit_card")?" · fatura "+t.statement_month.slice(5,7)+"/"+t.statement_month.slice(0,4):""}${t.card_holder_id&&holdersOf(t.account_id).length>1?" · "+esc(holderName(t.card_holder_id)):""}${t.wallet_id?" · "+esc(walletName(t.wallet_id)):""}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
+    <div style="text-align:right;white-space:nowrap"><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,t.currency)}</span><button class="x" data-ed="${t.id}">✏️</button><button class="x" data-del="${t.id}">✕</button></div></div>`;
+  const listHtml=()=>{
+    if(!grp)return data.map(rowH).join("");
+    const G={};data.forEach(t=>{(G[t.account_id]=G[t.account_id]||[]).push(t);});
+    const full=data.length<(mon?Math.max(S.lim,500):S.lim),ord=S.accounts.map(a=>a.id).filter(id=>G[id]).concat(Object.keys(G).filter(id=>!S.accounts.some(a=>a.id===id)));
+    return ord.map(id=>{const L=G[id],a=S.accounts.find(x=>x.id===id),nm=a?a.name:(L[0].accounts&&L[0].accounts.name)||"Conta",tot=L.reduce((r,x)=>r+Number(x.amount)*Number(x.fx_rate_to_base||1),0);
+      return `<div class="row" style="margin-top:10px;border-bottom:2px solid var(--ac)"><b>${esc(nm)} <span class="mu">· ${L.length} lanç.</span></b>${full?`<b class="${tot<0?"neg":"pos"}">${mm(tot)}</b>`:""}</div>`+L.map(rowH).join("");}).join("");};
   $("main").innerHTML=`<div class="card"><div class="seg"><button id="lpm" class="${mon?"on":""}">Mês</button><button id="lpa" class="${mon?"":"on"}">Tudo</button></div>
     ${mon?`<div class="row" style="align-items:center"><button class="x" id="lpp">‹</button><b>${fc?"Fatura de ":""}${mlab(m0)}</b><button class="x" id="lpn">›</button></div>`:""}
     <label style="margin-top:0">Conta<select id="lfa"><option value="">Todas as contas</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.fAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
+    ${S.fAcc?"":`<div class="seg" style="margin-top:8px"><button id="lgd" class="${grp?"":"on"}">Por data</button><button id="lga" class="${grp?"on":""}">Agrupar por conta</button></div>${grp&&!mon?'<div class="mu">Em "Tudo", o total de cada conta só aparece quando todos os lançamentos estão carregados.</div>':""}`}
     ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}${sumHtml}</div>
-  <div class="card">${data.length?data.map(t=>`<div class="row"><div>
-    <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
-    <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.statement_month&&S.accounts.some(a=>a.id===t.account_id&&a.type==="credit_card")?" · fatura "+t.statement_month.slice(5,7)+"/"+t.statement_month.slice(0,4):""}${t.card_holder_id&&holdersOf(t.account_id).length>1?" · "+esc(holderName(t.card_holder_id)):""}${t.wallet_id?" · "+esc(walletName(t.wallet_id)):""}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
-    <div style="text-align:right;white-space:nowrap"><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,t.currency)}</span><button class="x" data-ed="${t.id}">✏️</button><button class="x" data-del="${t.id}">✕</button></div></div>`).join(""):`<span class="mu">${S.fAcc?"Nenhum lançamento nesta conta.":"Nenhum lançamento ainda."}</span>`}</div>
-  ${data.length>=S.lim?'<button class="sec" id="lm">Carregar mais</button>':""}`;
+  <div class="card">${data.length?listHtml():`<span class="mu">${S.fAcc?"Nenhum lançamento nesta conta.":"Nenhum lançamento ainda."}</span>`}</div>
+  ${data.length>=(grp&&mon?Math.max(S.lim,500):S.lim)?'<button class="sec" id="lm">Carregar mais</button>':""}`;
+  if($("gti"))$("gti").onclick=()=>{S.im="";go("inv");};
   if($("lm"))$("lm").onclick=async()=>{const y=window.scrollY;S.lim+=50;await viewList();window.scrollTo(0,y);};
   $("lfa").onchange=()=>{S.fAcc=$("lfa").value||null;S.lim=50;viewList();};
+  if($("lgd")){$("lgd").onclick=()=>{lsSet("listgrp","date");S.lim=50;viewList();};$("lga").onclick=()=>{lsSet("listgrp","acc");S.lim=50;viewList();};}
+  if($("cmf")){$("cmf").onclick=()=>{lsSet("cardmode","stm");S.lim=50;viewList();};$("cmb").onclick=()=>{lsSet("cardmode","buy");S.lim=50;viewList();};}
   $("lpm").onclick=()=>{S.lper="mon";S.lim=50;viewList();};$("lpa").onclick=()=>{S.lper="all";S.lim=50;viewList();};
   if($("lpp")){$("lpp").onclick=()=>{S.lmon=mAdd(m0,-1);S.lim=50;viewList();};$("lpn").onclick=()=>{S.lmon=mAdd(m0,1);S.lim=50;viewList();};}
   document.querySelectorAll("[data-ed]").forEach(b=>b.onclick=()=>{S.ed=b.dataset.ed;go("ed");});
@@ -436,7 +458,7 @@ async function viewAcc(){
    <label>Cartão: dia de fechamento<input id="acl" type="number" min="1" max="31"></label>
    <label>Cartão: dia de vencimento<input id="adu" type="number" min="1" max="31"></label>
    <button class="pri" id="ads">Adicionar</button><p id="amsg" class="neg"></p></div>
-  <div class="card"><button class="sec" id="gcl" style="margin-top:0">🔒 Fechamento mensal</button><button class="sec" id="gc">🏷 Gerenciar categorias</button><button class="sec" id="gv">📖 Versículos</button></div>
+  <div class="card"><button class="sec" id="gcl" style="margin-top:0">🔒 Fechamento mensal</button><button class="sec" id="gc">🏷 Gerenciar categorias</button><button class="sec" id="gi">📈 Investimentos</button><button class="sec" id="gv">📖 Versículos</button></div>
   ${(ina||[]).length?`<div class="card"><details><summary>Contas inativas (${ina.length})</summary>${ina.map(a=>`<div class="row"><span>${esc(a.name)}</span><button class="x" data-ra="${a.id}">Reativar</button></div>`).join("")}</details></div>`:""}
   <div class="card mu">Código de convite da família: <b>${esc(h?.invite_code)}</b><br><br><button id="out">Sair</button></div>`;
   $("ads").onclick=async()=>{
@@ -446,7 +468,7 @@ async function viewAcc(){
     if(error)return $("amsg").textContent=error.message;
     if(card){const r=await sb.from("credit_cards").insert({household_id:S.hid,account_id:na.id,closing_day:cl,due_day:du});if(r.error)return $("amsg").textContent="Conta criada, mas o cartão não: "+r.error.message;await sb.from("card_holders").insert({household_id:S.hid,account_id:na.id,name:"Titular"});}
     await loadRef();viewAcc();};
-  $("gc").onclick=()=>{S.catFrom="acc";go("cat");};$("gv").onclick=()=>go("ver");
+  $("gc").onclick=()=>{S.catFrom="acc";go("cat");};$("gv").onclick=()=>go("ver");$("gi").onclick=()=>{S.im="";go("inv");};
   document.querySelectorAll("[data-cr]").forEach(b=>b.onclick=()=>{const w=S.wallets.find(x=>x.id===b.dataset.cr);
     S.kind="income";S.pre={acc:w.account_id,wal:w.id,amt:w.expected_amount,desc:"Crédito "+w.name,cat:lsGet("walcat_"+w.id)||null};go("add");});
   document.querySelectorAll("[data-mg]").forEach(b=>b.onclick=()=>{S.acmId=b.dataset.mg;go("acm");});
@@ -586,11 +608,11 @@ async function viewDash(){
   $("main").innerHTML='<div class="card mu">Carregando…</div>';
   const ano=today().slice(0,4),per=["weekly","monthly","yearly"],hid=S.hid,pr=dper();
   const [bl,un,lp,lm,rs,...ps]=await Promise.all([
-    sb.from("account_balances").select("account_id,type,balance_base").eq("household_id",hid),
+    (async()=>{const [a,i]=await Promise.all([sb.from("account_balances").select("account_id,type,balance_base").eq("household_id",hid),sb.from("investment_account_summary").select("account_id,in_assets").eq("household_id",hid)]);if(!a.error&&!i.error){const m={};(i.data||[]).forEach(x=>{m[x.account_id]=Number(x.in_assets)||0;});(a.data||[]).forEach(x=>{x.balance_base=Number(x.balance_base||0)+(m[x.account_id]||0);});}return a;})(),
     sb.from("transactions").select("amount,fx_rate_to_base").eq("household_id",hid).is("category_id",null).is("transfer_group_id",null).lt("amount",0).gte("date",ano+"-01-01").lte("date",ano+"-12-31"),
     sb.from("loan_progress").select("*").eq("household_id",hid).eq("is_active",true).order("name"),
     sb.from("loan_monthly_commitment").select("month,amount").eq("household_id",hid),
-    sb.rpc("period_summary",{p_household:hid,p_from:pr[0],p_to:pr[1]}),
+    sb.rpc("period_summary",{p_household:hid,p_from:pr[0],p_to:pr[1],p_card_mode:cm()}),
     ...per.map(p=>sb.rpc("budget_progress",{p_household:hid,p_ref:today(),p_period:p}))]);
   if(S.tab!=="dash"||S.hid!==hid)return;
   const err=[bl,un,...ps].find(r=>r.error);
@@ -623,7 +645,7 @@ async function viewDash(){
   const RS=(rs.data&&rs.data[0])||null,inc=RS?Number(RS.income):0,exp=RS?Number(RS.expense):0,PL={mon:"Mês",year:"Ano",all:"Tudo",cus:"Período"};
   const perHtml=`<div class="card"><b>Resultado do período</b><div class="chips" style="margin-top:8px">${Object.keys(PL).map(k=>`<button data-dp="${k}" class="${S.dper===k?"on":""}">${PL[k]}</button>`).join("")}</div>
    ${S.dper==="cus"?`<div style="display:flex;gap:8px"><label style="flex:1">De<input type="date" id="pdf" value="${S.dfrom||""}"></label><label style="flex:1">Até<input type="date" id="pdt" value="${S.dto||""}"></label></div>${S.dfrom&&S.dto?"":'<p class="mu">Informe as duas datas (por enquanto mostra o mês atual).</p>'}`:""}
-   ${rs.error?`<p class="neg">${esc(rs.error.message)}</p><p class="mu">Rode o script painel_periodo.sql no Supabase.</p>`:`<div class="row"><span>Receitas</span><span class="pos">${mm(inc)}</span></div><div class="row"><span>Despesas</span><span class="neg">${mm(exp)}</span></div><div class="row"><b>Resultado</b><b class="${inc+exp<0?"neg":"pos"}">${mm(inc+exp)}</b></div><div class="mu">Sem transferências. Compras no cartão contam pela data da compra.</div>`}</div>`;
+   ${rs.error?`<p class="neg">${esc(rs.error.message)}</p><p class="mu">Rode o script cartao_partida.sql no Supabase.</p>`:`<div class="row"><span>Receitas</span><span class="pos">${mm(inc)}</span></div><div class="row"><span>Despesas</span><span class="neg">${mm(exp)}</span></div><div class="row"><b>Resultado</b><b class="${inc+exp<0?"neg":"pos"}">${mm(inc+exp)}</b></div><div class="seg" style="margin-top:8px"><button data-cm="stm" class="${cm()==="stm"?"on":""}">Cartão: pela fatura</button><button data-cm="buy" class="${cm()==="buy"?"on":""}">Cartão: pela compra</button></div><div class="mu">Sem transferências. ${cm()==="stm"?"Compras no cartão contam no mês da fatura (vencimento).":"Compras no cartão contam pela data da compra."} As metas abaixo sempre contam pela data da compra.</div>`}</div>`;
   $("main").innerHTML=`<div class="card"><div class="mu">Saldo geral</div>
     <div style="font-size:1.6rem;font-weight:700" class="${geral<0?"neg":"pos"}">${mm(geral)}</div>
     <div class="row" style="margin-top:8px"><span>Disponível (corrente e dinheiro)</span><span class="${disp<0?"neg":""}">${mm(disp)}</span></div>
@@ -637,6 +659,7 @@ async function viewDash(){
   <button class="sec" id="gm">🎯 Gerenciar metas</button>
   <button class="sec" id="gl">🏦 Financiamentos e empréstimos</button>`;
   $("gm").onclick=()=>go("metas");
+  document.querySelectorAll("[data-cm]").forEach(b=>b.onclick=()=>{lsSet("cardmode",b.dataset.cm);viewDash();});
   document.querySelectorAll("[data-dp]").forEach(b=>b.onclick=()=>{S.dper=b.dataset.dp;viewDash();});
   if($("pdf")){$("pdf").onchange=()=>{S.dfrom=$("pdf").value;viewDash();};$("pdt").onchange=()=>{S.dto=$("pdt").value;viewDash();};}
   $("gl").onclick=()=>go("loans");
@@ -1000,6 +1023,10 @@ async function viewAcm(){
    <label>Nome<input id="an2" value="${esc(a.name)}"></label>
    <button class="pri" id="as">Salvar nome</button>
    <div class="row" style="margin-top:14px"><span>Saldo atual</span><b>${fmt(bal,cur)}</b></div>
+   ${a.type==="credit_card"?`<div class="card" style="margin-top:12px"><b>Mês de partida da dívida</b>
+     <label>A partir de<input type="month" id="asm" value="${a.start_month?a.start_month.slice(0,7):""}"></label>
+     <button class="sec" id="asv">Salvar partida</button>
+     <p class="mu">Só entram no saldo e na dívida do Painel as faturas deste mês em diante (compras e pagamentos). As anteriores continuam visíveis em Lançamentos e na Fatura. Deixe vazio para somar tudo.</p></div>`:""}
    <button class="sec neg" id="ai">Inativar conta</button><p id="am" class="neg"></p>
    <p class="mu">Inativar esconde a conta das telas e do saldo geral; os lançamentos ficam guardados e você pode reativar em Contas. Só é possível com saldo zerado${a.type==="credit_card"?" (cartão sem dívida)":""}.</p></div>`;
   if(a.type==="benefit"){await loadWallets();if(S.tab!=="acm")return;drawWal(a);}
@@ -1011,6 +1038,8 @@ async function viewAcm(){
     const {error}=await sb.from("accounts").update({name:n}).eq("id",a.id);
     if(error)return say("Erro: "+error.message);
     await loadRef();go("acc");};
+  if($("asv"))$("asv").onclick=async()=>{const v=$("asm").value,{error}=await sb.from("accounts").update({start_month:v?v+"-01":null}).eq("id",a.id);
+    if(error)return say("Erro: "+error.message);await loadRef();viewAcm();};
   $("ai").onclick=async()=>{
     if(Math.abs(bal)>=0.005)return say(`O saldo é ${fmt(bal,cur)}. Zere antes de inativar (transferência ou ajuste).`);
     if(!confirm(`Inativar a conta "${a.name}"?`))return;
@@ -1076,7 +1105,7 @@ async function splash(){
   sb.from("verse_settings").upsert({household_id:S.hid,user_id:S.uid,verse_order:mode,splash:st?st.splash:true,verse_scope:scope,last_id:x.id},{onConflict:"household_id,user_id"}).then(()=>{});
   const d=document.createElement("div");
   d.style.cssText="position:fixed;inset:0;z-index:99;background:var(--bg);color:var(--tx);display:flex;justify-content:center;align-items:center;padding:calc(32px + env(safe-area-inset-top)) 28px 32px;text-align:center;cursor:pointer";
-  d.innerHTML=`<div style="max-width:520px"><div style="font-size:1.3rem;line-height:1.6;font-style:italic">“${esc(x.text)}”</div><div style="margin-top:20px;font-weight:700;color:var(--ac)">${esc(refv(x))}</div><div class="mu" style="margin-top:40px">Toque para continuar</div></div>`;
+  d.innerHTML=`<div style="max-width:520px"><div style="font-size:1.3rem;line-height:1.6;font-style:italic">“${esc(x.text)}”</div><div style="margin-top:20px;font-weight:700;color:var(--ac)">${esc(refv(x))}</div>${x.version?`<div class="mu" style="font-size:.8rem;margin-top:2px">${esc(x.version)}</div>`:""}<div class="mu" style="margin-top:40px">Toque para continuar</div></div>`;
   document.body.appendChild(d);
   return new Promise(res=>{d.onclick=()=>{d.remove();res();};});
 }
@@ -1088,6 +1117,7 @@ async function viewVer(msg){
   if(S.tab!=="ver")return;
   if(v.error){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button><p class="neg">${esc(v.error.message)}</p><p class="mu">Se a tabela não existe, rode o script versiculos.sql no Supabase.</p></div>`;$("bk").onclick=()=>go("acc");return;}
   const L=v.data||[],st=s.data||{verse_order:"random",splash:true},multi=S.hs.length>1,E=L.find(x=>x.id===S.vid)||{};
+  const VERS=[...new Set(L.map(x=>(x.version||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt"));
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Versículos</b>
    <label>Ordem de exibição<select id="vo"><option value="random" ${st.verse_order==="random"?"selected":""}>Aleatória</option><option value="sequential" ${st.verse_order==="sequential"?"selected":""}>Sequencial</option></select></label>
    ${multi?`<label>Versículos exibidos<select id="vsc"><option value="own" ${scope==="own"?"selected":""}>Apenas da família atual (${esc(famName(S.hid))})</option><option value="all" ${scope==="all"?"selected":""}>De todas as minhas famílias</option></select></label>`:""}
@@ -1096,10 +1126,12 @@ async function viewVer(msg){
   <div class="card"><b>${E.id?"Editar versículo":"Novo versículo"}</b>
    <label>Livro<input id="vb" value="${esc(E.book||"")}" placeholder="Ex.: Mateus"></label>
    <div style="display:flex;gap:8px"><label style="flex:1">Capítulo<input id="vc" type="number" min="1" value="${E.chapter||""}"></label><label style="flex:1">Versículo<input id="vv" type="number" min="1" value="${E.verse_start||""}"></label><label style="flex:1">Até (opc.)<input id="ve" type="number" min="1" value="${E.verse_end||""}"></label></div>
+   <label>Versão da Bíblia<input id="vver" list="vvers" autocomplete="off" value="${esc(E.id?(E.version||""):(lsGet("ver_last")||""))}" placeholder="Ex.: Nova Versão Internacional"></label>
+   <datalist id="vvers">${VERS.map(x=>`<option value="${esc(x)}">`).join("")}</datalist>
    <label>Texto<textarea id="vtx" rows="5">${esc(E.text||"")}</textarea></label>
    <button class="pri" id="vsave">${E.id?"Salvar alterações":"Adicionar"}</button>${E.id?'<button class="sec" id="vcan">Cancelar edição</button>':""}
    <p id="vm" class="${msg?"pos":"neg"}">${esc(msg||"")}</p></div>
-  <div class="card"><b>Cadastrados (${L.length})</b>${L.map(x=>`<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(refv(x))}${x.is_active?"":" (inativo)"}${scope==="all"&&multi?` <span class="mu">· ${esc(famName(x.household_id))}</span>`:""}</b><span style="white-space:nowrap"><button class="x" data-ve="${x.id}">✏️</button><button class="x" data-vt="${x.id}">${x.is_active?"Desativar":"Ativar"}</button><button class="x" data-vd="${x.id}">✕</button></span></div><div class="mu">${esc(x.text)}</div></div>`).join("")||'<p class="mu">Nenhum versículo ainda.</p>'}</div>`;
+  <div class="card"><b>Cadastrados (${L.length})</b>${L.map(x=>`<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(refv(x))}${x.is_active?"":" (inativo)"}${scope==="all"&&multi?` <span class="mu">· ${esc(famName(x.household_id))}</span>`:""}</b><span style="white-space:nowrap"><button class="x" data-ve="${x.id}">✏️</button><button class="x" data-vt="${x.id}">${x.is_active?"Desativar":"Ativar"}</button><button class="x" data-vd="${x.id}">✕</button></span></div>${x.version?`<div class="mu" style="font-size:.8rem">${esc(x.version)}</div>`:""}<div class="mu">${esc(x.text)}</div></div>`).join("")||'<p class="mu">Nenhum versículo ainda.</p>'}</div>`;
   const say=t=>{$("vm").className="neg";$("vm").textContent=t;};
   $("bk").onclick=()=>{S.vid=null;go("acc");};
   $("vsv").onclick=async()=>{const {error}=await sb.from("verse_settings").upsert({household_id:S.hid,user_id:S.uid,verse_order:$("vo").value,splash:$("vs").checked,verse_scope:$("vsc")?$("vsc").value:scope,last_id:st.last_id||null},{onConflict:"household_id,user_id"});
@@ -1108,9 +1140,10 @@ async function viewVer(msg){
     const b=$("vb").value.trim(),c=+$("vc").value,vs=+$("vv").value,ve=$("ve").value?+$("ve").value:null,t=$("vtx").value.trim();
     if(!b||!(c>=1)||!(vs>=1)||!t)return say("Preencha livro, capítulo, versículo e texto.");
     if(ve!==null&&ve<=vs)return say("O versículo final deve ser maior que o inicial (ou deixe em branco).");
-    const row={household_id:E.id?E.household_id:S.hid,book:b,chapter:c,verse_start:vs,verse_end:ve,text:t};
+    const vr=$("vver").value.trim()||null;
+    const row={household_id:E.id?E.household_id:S.hid,book:b,chapter:c,verse_start:vs,verse_end:ve,text:t,version:vr};
     const {error}=E.id?await sb.from("bible_verses").update(row).eq("id",E.id):await sb.from("bible_verses").insert(row);
-    if(error)return say("Erro: "+error.message);S.vid=null;viewVer("Salvo ✓");};
+    if(error)return say("Erro: "+error.message);if(vr)lsSet("ver_last",vr);S.vid=null;viewVer("Salvo ✓");};
   if($("vcan"))$("vcan").onclick=()=>{S.vid=null;viewVer();};
   document.querySelectorAll("[data-ve]").forEach(b=>b.onclick=()=>{S.vid=b.dataset.ve;viewVer().then(()=>window.scrollTo(0,0));});
   document.querySelectorAll("[data-vt]").forEach(b=>b.onclick=async()=>{const x=L.find(y=>y.id===b.dataset.vt);
@@ -1120,6 +1153,89 @@ async function viewVer(msg){
 }
 
 sb.auth.getSession().then(({data:{session}})=>session?start():show("login"));
+
+/* ===== Investimentos (Fase 1) ===== */
+const ICLS={renda_fixa:"Renda fixa",acoes:"Ações",fiis:"FIIs",cripto:"Cripto",previdencia:"Previdência",outros:"Outros"},r2=v=>Math.round(v*100)/100,nq=v=>Number(v).toLocaleString("pt-BR",{maximumFractionDigits:8});
+async function viewInv(){
+  const hid=S.hid,[sm,po,op]=await Promise.all([
+    sb.from("investment_account_summary").select("*").eq("household_id",hid),
+    sb.from("investment_positions").select("*").eq("household_id",hid).order("name"),
+    sb.from("investment_operations").select("id,date,side,quantity,amount,fees,realized_result,investment_assets(name,ticker)").eq("household_id",hid).order("date",{ascending:false}).order("created_at",{ascending:false}).limit(15)]);
+  if(S.tab!=="inv")return;
+  const er=[sm,po,op].find(r=>r.error);
+  if(er){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button><p class="neg">${esc(er.error.message)}</p><p class="mu">Se a tabela ou a view não existe, rode o script investimentos_fase1.sql no Supabase.</p></div>`;$("bk").onclick=()=>go("acc");return;}
+  const A=S.accounts.filter(a=>a.type==="investment"),ok=id=>A.some(a=>a.id===id),
+    P=(po.data||[]).filter(p=>p.is_active&&ok(p.account_id)),H=P.filter(p=>Number(p.qty)>0),m=S.im||"",
+    T=(sm.data||[]).filter(x=>ok(x.account_id)),cls={},sum=k=>T.reduce((r,x)=>r+Number(x[k]||0),0),td=new Date().toISOString().slice(0,10);
+  H.forEach(p=>{cls[p.class]=(cls[p.class]||0)+Number(p.current_value);});
+  const sel=(id,o)=>`<select id="${id}">${o}</select>`,accO=A.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join(""),
+    clsO=Object.keys(ICLS).map(k=>`<option value="${k}">${ICLS[k]}</option>`).join("");
+  let form="";
+  if(m==="asset")form=`<div class="card"><b>Novo ativo</b>
+    <label>Conta de investimento${sel("ia",accO)}</label>
+    <label>Classe${sel("ic",clsO)}</label>
+    <label>Como informar o valor${sel("ip",'<option value="quote">Quantidade × cotação (ações, FIIs, cripto)</option><option value="total">Valor total do título (Tesouro, renda fixa)</option>')}</label>
+    <label>Ticker (código, ações e FIIs)<input id="it" placeholder="Ex.: ITSA4" autocapitalize="characters"></label>
+    <label>Nome da empresa, fundo ou título<input id="in" placeholder="Ex.: Itaúsa PN"></label>
+    <label>CNPJ (ações e FIIs, para o IR)<input id="icn" inputmode="numeric"></label>
+    <label>Taxa (opcional)<input id="ir" placeholder="Ex.: IPCA + 6%"></label>
+    <label>Vencimento (opcional)<input id="iv" type="date"></label>
+    <button class="sec" id="isv">Salvar ativo</button><button class="lk" id="icx">Cancelar</button></div>`;
+  if(m==="op")form=`<div class="card"><b>Nova operação</b>
+    <label>Ativo${sel("oa",P.map(p=>`<option value="${p.asset_id}">${esc(p.ticker||p.name)} · ${esc(p.name)}</option>`).join(""))}</label>
+    <label>Tipo${sel("os",'<option value="buy">Compra</option><option value="sell">Venda / resgate</option>')}</label>
+    <label>Data<input id="od" type="date" value="${td}"></label>
+    <label class="oq">Quantidade<input id="oqt" inputmode="decimal"></label>
+    <label class="oq">Preço unitário (R$)<input id="opu" inputmode="decimal"></label>
+    <label>Valor total (R$)<input id="ov" inputmode="decimal" placeholder="Em ações e FIIs, vazio = quantidade × preço"></label>
+    <label>Corretagem e taxas (R$)<input id="of" inputmode="decimal" placeholder="0,00"></label>
+    <p class="mu">Compra tira do caixa e sobe a posição; venda faz o contrário. Não é receita nem despesa. Em Tesouro e renda fixa, nesta fase só há resgate total (informe o valor recebido).</p>
+    <button class="sec" id="osv">Salvar operação</button><button class="lk" id="ocx">Cancelar</button></div>`;
+  if(m==="quo")form=`<div class="card"><b>Atualizar cotações</b>
+    <label>Data<input id="qd" type="date" value="${td}"></label>
+    ${H.map(p=>`<label>${esc(p.ticker||p.name)} · ${p.price_mode==="quote"?"cotação (R$ por unidade)":"valor total atualizado (R$)"}<input data-q="${p.asset_id}" inputmode="decimal" placeholder="${p.last_value!=null?nq(p.last_value):""}"></label>`).join("")||'<p class="mu">Nenhum ativo em carteira.</p>'}
+    <button class="sec" id="qsv">Salvar</button><button class="lk" id="qcx">Cancelar</button></div>`;
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Investimentos</b>
+    ${A.length?`<div class="row" style="margin-top:8px"><b>Patrimônio</b><b>${mm(sum("total"))}</b></div>
+    <div class="row"><span class="mu">Caixa (ainda não investido)</span><span>${mm(sum("cash"))}</span></div>
+    <div class="row"><span class="mu">Em ativos</span><span>${mm(sum("in_assets"))}</span></div>
+    ${Object.keys(cls).map(k=>`<div class="row" style="padding-left:14px"><span class="mu">${ICLS[k]}</span><span>${mm(cls[k])}</span></div>`).join("")}`
+    :'<p class="mu">Crie em Contas uma conta do tipo Investimento (em reais) e transfira dinheiro para ela. Cada aporte é uma transferência.</p>'}</div>
+  ${A.length&&!m?`<div class="card"><button class="sec" id="nb" style="margin-top:0">+ Ativo</button><button class="sec" id="no" ${P.length?"":"disabled"}>+ Operação (compra ou venda)</button><button class="sec" id="nq" ${H.length?"":"disabled"}>Atualizar cotações</button></div>`:""}
+  ${form}
+  ${H.length?`<div class="card"><b>Posições</b>${H.map(p=>{const q=p.price_mode==="quote",res=Number(p.current_value)-Number(p.cost);
+    return `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(p.ticker||p.name)}</b><b>${mm(p.current_value)}</b></div>
+    <div class="mu">${esc(p.name)} · ${ICLS[p.class]} · ${q?`${nq(p.qty)} un. · preço médio ${mm(p.avg_price)}${p.last_value!=null?" · cotação "+mm(p.last_value)+" ("+fdt(p.last_date)+")":" · sem cotação (usa o preço médio)"}`:`custo ${mm(p.cost)}${p.last_value!=null?" · atualizado em "+fdt(p.last_date):" · sem valor informado (usa o custo)"}`}</div>
+    <div class="${res<0?"neg":"pos"}" style="font-size:.85rem">Resultado ${mm(res)}</div></div>`;}).join("")}</div>`:""}
+  ${(op.data||[]).length?`<div class="card"><b>Últimas operações</b>${op.data.map(o=>`<div class="row"><div><div>${o.side==="buy"?"Compra":"Venda"} · ${esc(o.investment_assets?.ticker||o.investment_assets?.name||"")}</div><div class="mu">${fdt(o.date)}${o.quantity?" · "+nq(o.quantity)+" un.":""}${Number(o.fees)?" · taxas "+mm(o.fees):""}${o.realized_result!=null?" · resultado "+mm(o.realized_result):""}</div></div><div style="white-space:nowrap"><span>${mm(o.amount)}</span><button class="x" data-od="${o.id}">✕</button></div></div>`).join("")}</div>`:""}`;
+  const rl=()=>{S.im="";viewInv();};
+  $("bk").onclick=()=>go("acc");
+  if($("nb"))$("nb").onclick=()=>{S.im="asset";viewInv();};
+  if($("no"))$("no").onclick=()=>{S.im="op";viewInv();};
+  if($("nq"))$("nq").onclick=()=>{S.im="quo";viewInv();};
+  ["icx","ocx","qcx"].forEach(i=>{if($(i))$(i).onclick=rl;});
+  if($("ic"))$("ic").onchange=()=>{$("ip").value=["acoes","fiis","cripto"].includes($("ic").value)?"quote":"total";};
+  if($("ic"))$("ic").onchange();
+  if($("isv"))$("isv").onclick=async()=>{const n=$("in").value.trim(),t=$("it").value.trim().toUpperCase();
+    if(!n){alert("Informe o nome.");return;}
+    const {error}=await sb.from("investment_assets").insert({household_id:hid,account_id:$("ia").value,class:$("ic").value,price_mode:$("ip").value,ticker:t||null,name:n,cnpj:$("icn").value.trim()||null,rate:$("ir").value.trim()||null,maturity:$("iv").value||null});
+    if(error){alert("Erro: "+error.message);return;}rl();};
+  const sync=()=>{const a=P.find(x=>x.asset_id===$("oa").value);document.querySelectorAll(".oq").forEach(e=>{e.style.display=a&&a.price_mode==="quote"?"":"none";});};
+  if($("oa")){$("oa").onchange=sync;sync();}
+  if($("osv"))$("osv").onclick=async()=>{const a=P.find(x=>x.asset_id===$("oa").value),q=a.price_mode==="quote",
+      qt=q?num($("oqt").value||""):null,pu=q&&$("opu").value?num($("opu").value):null,fe=$("of").value?num($("of").value):0;
+    let am=$("ov").value?num($("ov").value):(q&&qt&&pu?r2(qt*pu):NaN);
+    if(!$("od").value||!(am>0)||(q&&!(qt>0))||!(fe>=0)){alert("Confira data, quantidade e valores.");return;}
+    const {error}=await sb.from("investment_operations").insert({asset_id:a.asset_id,date:$("od").value,side:$("os").value,quantity:qt,unit_price:pu,amount:am,fees:fe});
+    if(error){alert("Erro: "+error.message);return;}rl();};
+  if($("qsv"))$("qsv").onclick=async()=>{const d=$("qd").value,rows=[...document.querySelectorAll("[data-q]")].filter(i=>i.value.trim()).map(i=>({asset_id:i.dataset.q,date:d,value:num(i.value)}));
+    if(!d||!rows.length||rows.some(r=>!(r.value>=0))){alert("Informe a data e ao menos um valor válido.");return;}
+    const {error}=await sb.from("investment_snapshots").upsert(rows,{onConflict:"asset_id,date"});
+    if(error){alert("Erro: "+error.message);return;}rl();};
+  document.querySelectorAll("[data-od]").forEach(b=>b.onclick=async()=>{if(!confirm("Apagar esta operação? O preço médio será recalculado."))return;
+    const {error}=await sb.from("investment_operations").delete().eq("id",b.dataset.od);
+    if(error)alert("Erro: "+error.message);viewInv();});
+}
 </script>
 </body>
 </html>
