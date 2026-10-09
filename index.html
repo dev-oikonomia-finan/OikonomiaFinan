@@ -395,7 +395,20 @@ async function viewList(){
   const sc=v=>v<0?"neg":"pos",tot=ent[0]+ent[1]+ent[2],ctot=Object.values(tr.cards).reduce((r,v)=>r+v,0);
   let sumHtml="";
   const fi=S.fAcc&&S.accounts.find(a=>a.id===S.fAcc&&a.type==="investment");
-  if(fi)sumHtml=`<div class="mu">Conta de investimento: aqui ficam só aportes e resgates (transferências). Compras, vendas e rendimentos estão em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;
+  const iv={inc:0,ops:0};
+  if(fi&&mon){
+    const ma=mAdd(m0,1),[ri,ro]=await Promise.all([
+      sb.from("investment_income").select("net,investment_assets!inner(account_id)").eq("investment_assets.account_id",S.fAcc).gte("date",m0).lt("date",ma),
+      sb.from("investment_operations").select("side,amount,fees,investment_assets!inner(account_id)").eq("investment_assets.account_id",S.fAcc).gte("date",m0).lt("date",ma)]);
+    iv.inc=(ri.data||[]).reduce((r,x)=>r+Number(x.net),0);
+    iv.ops=(ro.data||[]).reduce((r,x)=>r+(x.side==="sell"?Number(x.amount)-Number(x.fees):-(Number(x.amount)+Number(x.fees))),0);}
+  if(fi&&mon)sumHtml=`<div class="row"><span class="mu">Saldo do mês anterior${prevOk?"":" (sem fechamento)"}</span><span class="${sc(prev)}">${mm(prev)}</span></div>
+    <div class="row"><span class="mu">Rendimentos do mês</span><span class="pos">${mm(iv.inc)}</span></div>
+    <div class="row"><span class="mu">Compras e vendas de ativos</span><span class="${sc(iv.ops)}">${mm(iv.ops)}</span></div>
+    <div class="row"><span class="mu">Aportes (transferências de entrada)</span><span class="pos">${mm(tr.inn)}</span></div>
+    <div class="row"><span class="mu">Resgates (transferências de saída)</span><span class="neg">${mm(tr.out)}</span></div>
+    <div class="row"><b>Saldo final</b><b class="${sc(prev+tot+iv.inc+iv.ops)}">${mm(prev+tot+iv.inc+iv.ops)}</b></div><div class="mu">Saldo do mês anterior + rendimentos + compras e vendas + aportes e resgates. Rendimentos e operações são lançados em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;
+  else if(fi)sumHtml=`<div class="mu">Conta de investimento: aqui ficam só aportes e resgates (transferências). Compras, vendas e rendimentos estão em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;
   else if(mon&&fc)sumHtml=`<div class="row"><b>Total da fatura</b><b>${mm(-(ent[0]+ent[1]))}</b></div><div class="mu">Compras da fatura, sem os pagamentos.</div>`;
   else if(mon&&S.fAcc)sumHtml=`<div class="row"><span class="mu">Saldo do mês anterior${prevOk?"":" (sem fechamento)"}</span><span class="${sc(prev)}">${mm(prev)}</span></div>
     <div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div>
@@ -980,6 +993,7 @@ async function viewClo(msg){
   if(!S.cloMon)S.cloMon=cl.length?mAdd(cl[0].ref_month,1):mAdd(today().slice(0,8)+"01",-1);
   const m=S.cloMon,done=cl.find(c=>c.ref_month===m);
   const {data:calc}=await sb.rpc("closing_balance",{p_account:acc.id,p_ref:m});
+  const wl=acc.type==="benefit"&&!done?((await sb.rpc("wallet_closing_balances",{p_account:acc.id,p_ref:m})).data||[]).filter(w=>w.is_active||Number(w.balance)!==0):[];
   if(S.tab!=="clo"||S.cloAcc!==acc.id||S.cloMon!==m)return;
   const cv=Number(calc||0),dif=x=>{const d=Math.round(x*100)/100;return d===0?"confere ✓":"diferença "+fmt(d,cur);};
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Fechamento mensal</b>
@@ -987,7 +1001,7 @@ async function viewClo(msg){
    <div class="row" style="align-items:center"><button class="x" id="cp">‹</button><b>${mlab(m)}</b><button class="x" id="cn">›</button></div>
    ${done?`<p class="pos">Fechado ✓</p><div class="row"><span>${card?"Total da fatura":"Saldo"} (app)</span><span>${fmt(done.calculated_balance,cur)}</span></div><div class="row"><span>Informado (extrato)</span><span>${fmt(done.reported_balance,cur)}</span></div><div class="mu">${dif(done.reported_balance-done.calculated_balance)}</div>`
    :`<div class="row"><span>${card?"Total da fatura no app":"Saldo no app, no fim do mês"}</span><b>${fmt(cv,cur)}</b></div>
-   <label>${card?"Total da fatura no banco":"Saldo no extrato do banco"}<input id="cv" inputmode="decimal" placeholder="0,00"></label>
+   ${wl.length?wl.map(w=>`<label>${esc(w.name)} <span class="mu">(app ${fmt(w.balance,cur)})</span><input class="cw" data-w="${w.wallet_id}" data-a="${w.balance}" inputmode="decimal" placeholder="0,00"><span class="mu" id="cwd${w.wallet_id}"></span></label>`).join("")+`<label>Total no extrato (soma das carteiras)<input id="cv" readonly></label>`:`<label>${card?"Total da fatura no banco":"Saldo no extrato do banco"}<input id="cv" inputmode="decimal" placeholder="0,00"></label>`}
    <p id="cd" class="mu"></p><button class="pri" id="cs">Fechar ${esc(mlab(m))}</button>
    <p class="mu">Fechar congela os lançamentos até este mês${card?" (por fatura)":""}. Para corrigir depois, reabra o último fechamento.</p>`}
    <p id="cm" class="${msg?"pos":"neg"}">${esc(msg||"")}</p></div>
@@ -997,7 +1011,12 @@ async function viewClo(msg){
   $("ca").onchange=()=>{S.cloAcc=$("ca").value;S.cloMon=null;viewClo();};
   $("cp").onclick=()=>{S.cloMon=mAdd(m,-1);viewClo();};$("cn").onclick=()=>{S.cloMon=mAdd(m,1);viewClo();};
   if($("cv"))$("cv").oninput=()=>{const v=num($("cv").value);$("cd").textContent=isNaN(v)?"":"Comparação: "+dif(v-cv);};
+  document.querySelectorAll(".cw").forEach(i=>i.oninput=()=>{
+    const all=[...document.querySelectorAll(".cw")];
+    all.forEach(x=>{const e=document.getElementById("cwd"+x.dataset.w),v=num(x.value);e.textContent=x.value.trim()&&!isNaN(v)?" "+dif(v-Number(x.dataset.a)):"";});
+    const t=all.reduce((r,x)=>r+(num(x.value)||0),0);$("cv").value=String(Math.round(t*100)/100).replace(".",",");$("cv").oninput();});
   if($("cs"))$("cs").onclick=async()=>{
+    if([...document.querySelectorAll(".cw")].some(x=>!x.value.trim()))return say("Informe o saldo de todas as carteiras (0 se estiver vazia).");
     const v=num($("cv").value);
     if(isNaN(v))return say("Informe o valor do extrato.");
     const d=Math.round((v-cv)*100)/100;
@@ -1157,12 +1176,14 @@ sb.auth.getSession().then(({data:{session}})=>session?start():show("login"));
 /* ===== Investimentos (Fase 1) ===== */
 const ICLS={renda_fixa:"Renda fixa",acoes:"Ações",fiis:"FIIs",cripto:"Cripto",previdencia:"Previdência",outros:"Outros"},r2=v=>Math.round(v*100)/100,nq=v=>Number(v).toLocaleString("pt-BR",{maximumFractionDigits:8});
 async function viewInv(){
-  const hid=S.hid,[sm,po,op]=await Promise.all([
+  const hid=S.hid,y0=today().slice(0,4)+"-01-01",[sm,po,op,ri,ry]=await Promise.all([
     sb.from("investment_account_summary").select("*").eq("household_id",hid),
     sb.from("investment_positions").select("*").eq("household_id",hid).order("name"),
-    sb.from("investment_operations").select("id,date,side,quantity,amount,fees,realized_result,investment_assets(name,ticker)").eq("household_id",hid).order("date",{ascending:false}).order("created_at",{ascending:false}).limit(15)]);
+    sb.from("investment_operations").select("id,date,side,quantity,amount,fees,realized_result,investment_assets(name,ticker)").eq("household_id",hid).order("date",{ascending:false}).order("created_at",{ascending:false}).limit(15),
+    sb.from("investment_income").select("id,date,kind,tax_withheld,net,investment_assets(name,ticker)").eq("household_id",hid).order("date",{ascending:false}).order("created_at",{ascending:false}).limit(15),
+    sb.from("investment_income").select("net").eq("household_id",hid).gte("date",y0)]);
   if(S.tab!=="inv")return;
-  const er=[sm,po,op].find(r=>r.error);
+  const er=[sm,po,op,ri,ry].find(r=>r.error);
   if(er){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button><p class="neg">${esc(er.error.message)}</p><p class="mu">Se a tabela ou a view não existe, rode o script investimentos_fase1.sql no Supabase.</p></div>`;$("bk").onclick=()=>go("acc");return;}
   const A=S.accounts.filter(a=>a.type==="investment"),ok=id=>A.some(a=>a.id===id),
     P=(po.data||[]).filter(p=>p.is_active&&ok(p.account_id)),H=P.filter(p=>Number(p.qty)>0),m=S.im||"",
@@ -1195,25 +1216,38 @@ async function viewInv(){
     <label>Data<input id="qd" type="date" value="${td}"></label>
     ${H.map(p=>`<label>${esc(p.ticker||p.name)} · ${p.price_mode==="quote"?"cotação (R$ por unidade)":"valor total atualizado (R$)"}<input data-q="${p.asset_id}" inputmode="decimal" placeholder="${p.last_value!=null?nq(p.last_value):""}"></label>`).join("")||'<p class="mu">Nenhum ativo em carteira.</p>'}
     <button class="sec" id="qsv">Salvar</button><button class="lk" id="qcx">Cancelar</button></div>`;
+  const KIND={juros:"Juros",dividendo:"Dividendo",jcp:"JCP",rendimento_fii:"Rendimento de FII",outros:"Outros"};
+  if(m==="inc")form=`<div class="card"><b>Novo rendimento</b>
+    <label>Ativo${sel("ra",P.map(p=>`<option value="${p.asset_id}">${esc(p.ticker||p.name)} (${esc(A.find(a=>a.id===p.account_id)?.name||"")})</option>`).join(""))}</label>
+    <label>Tipo${sel("rk",Object.keys(KIND).map(k=>`<option value="${k}">${KIND[k]}</option>`).join(""))}</label>
+    <label>Data de pagamento<input id="rd" type="date" value="${td}"></label>
+    <label>Valor bruto (R$)<input id="rg" inputmode="decimal"></label>
+    <label>IR retido (R$, opcional)<input id="rt" inputmode="decimal" placeholder="0,00"></label>
+    <p class="mu" id="rn"></p>
+    <p class="mu">Entra no caixa da conta de investimento pelo valor líquido. Não é receita nem entra no Resultado do período.</p>
+    <button class="sec" id="rsv">Salvar rendimento</button><button class="lk" id="rcx">Cancelar</button></div>`;
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Investimentos</b>
     ${A.length?`<div class="row" style="margin-top:8px"><b>Patrimônio</b><b>${mm(sum("total"))}</b></div>
     <div class="row"><span class="mu">Caixa (ainda não investido)</span><span>${mm(sum("cash"))}</span></div>
     <div class="row"><span class="mu">Em ativos</span><span>${mm(sum("in_assets"))}</span></div>
+    <div class="row"><span class="mu">Rendimentos no ano (líquido)</span><span class="pos">${mm((ry.data||[]).reduce((r,x)=>r+Number(x.net),0))}</span></div>
     ${Object.keys(cls).map(k=>`<div class="row" style="padding-left:14px"><span class="mu">${ICLS[k]}</span><span>${mm(cls[k])}</span></div>`).join("")}`
     :'<p class="mu">Crie em Contas uma conta do tipo Investimento (em reais) e transfira dinheiro para ela. Cada aporte é uma transferência.</p>'}</div>
-  ${A.length&&!m?`<div class="card"><button class="sec" id="nb" style="margin-top:0">+ Ativo</button><button class="sec" id="no" ${P.length?"":"disabled"}>+ Operação (compra ou venda)</button><button class="sec" id="nq" ${H.length?"":"disabled"}>Atualizar cotações</button></div>`:""}
+  ${A.length&&!m?`<div class="card"><button class="sec" id="nb" style="margin-top:0">+ Ativo</button><button class="sec" id="no" ${P.length?"":"disabled"}>+ Operação (compra ou venda)</button><button class="sec" id="nq" ${H.length?"":"disabled"}>Atualizar cotações</button><button class="sec" id="nr" ${P.length?"":"disabled"}>+ Rendimento</button></div>`:""}
   ${form}
   ${H.length?`<div class="card"><b>Posições</b>${H.map(p=>{const q=p.price_mode==="quote",res=Number(p.current_value)-Number(p.cost);
     return `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(p.ticker||p.name)}</b><b>${mm(p.current_value)}</b></div>
     <div class="mu">${esc(p.name)} · ${ICLS[p.class]} · ${q?`${nq(p.qty)} un. · preço médio ${mm(p.avg_price)}${p.last_value!=null?" · cotação "+mm(p.last_value)+" ("+fdt(p.last_date)+")":" · sem cotação (usa o preço médio)"}`:`custo ${mm(p.cost)}${p.last_value!=null?" · atualizado em "+fdt(p.last_date):" · sem valor informado (usa o custo)"}`}</div>
     <div class="${res<0?"neg":"pos"}" style="font-size:.85rem">Resultado ${mm(res)}</div></div>`;}).join("")}</div>`:""}
   ${(op.data||[]).length?`<div class="card"><b>Últimas operações</b>${op.data.map(o=>`<div class="row"><div><div>${o.side==="buy"?"Compra":"Venda"} · ${esc(o.investment_assets?.ticker||o.investment_assets?.name||"")}</div><div class="mu">${fdt(o.date)}${o.quantity?" · "+nq(o.quantity)+" un.":""}${Number(o.fees)?" · taxas "+mm(o.fees):""}${o.realized_result!=null?" · resultado "+mm(o.realized_result):""}</div></div><div style="white-space:nowrap"><span>${mm(o.amount)}</span><button class="x" data-od="${o.id}">✕</button></div></div>`).join("")}</div>`:""}`;
+  if((ri.data||[]).length)$("main").insertAdjacentHTML("beforeend",`<div class="card"><b>Últimos rendimentos</b>${ri.data.map(i=>`<div class="row"><div><div>${KIND[i.kind]} · ${esc(i.investment_assets?.ticker||i.investment_assets?.name||"")}</div><div class="mu">${fdt(i.date)}${Number(i.tax_withheld)?" · IR retido "+mm(i.tax_withheld):""}</div></div><div style="white-space:nowrap"><span class="pos">${mm(i.net)}</span><button class="x" data-ri="${i.id}">✕</button></div></div>`).join("")}</div>`);
   const rl=()=>{S.im="";viewInv();};
   $("bk").onclick=()=>go("acc");
   if($("nb"))$("nb").onclick=()=>{S.im="asset";viewInv();};
   if($("no"))$("no").onclick=()=>{S.im="op";viewInv();};
   if($("nq"))$("nq").onclick=()=>{S.im="quo";viewInv();};
-  ["icx","ocx","qcx"].forEach(i=>{if($(i))$(i).onclick=rl;});
+  if($("nr"))$("nr").onclick=()=>{S.im="inc";viewInv();};
+  ["icx","ocx","qcx","rcx"].forEach(i=>{if($(i))$(i).onclick=rl;});
   if($("ic"))$("ic").onchange=()=>{$("ip").value=["acoes","fiis","cripto"].includes($("ic").value)?"quote":"total";};
   if($("ic"))$("ic").onchange();
   if($("isv"))$("isv").onclick=async()=>{const n=$("in").value.trim(),t=$("it").value.trim().toUpperCase();
@@ -1232,6 +1266,15 @@ async function viewInv(){
     if(!d||!rows.length||rows.some(r=>!(r.value>=0))){alert("Informe a data e ao menos um valor válido.");return;}
     const {error}=await sb.from("investment_snapshots").upsert(rows,{onConflict:"asset_id,date"});
     if(error){alert("Erro: "+error.message);return;}rl();};
+  const rnv=()=>{const g=num($("rg").value||""),t=$("rt").value?num($("rt").value):0;$("rn").textContent=g>0&&t>=0&&t<=g?"Líquido: "+mm(g-t):"";};
+  if($("rg")){$("rg").oninput=rnv;$("rt").oninput=rnv;}
+  if($("rsv"))$("rsv").onclick=async()=>{const g=num($("rg").value||""),t=$("rt").value?num($("rt").value):0;
+    if(!$("rd").value||!(g>0)||!(t>=0)||t>g){alert("Confira a data, o valor bruto e o IR retido (não pode passar do bruto).");return;}
+    const {error}=await sb.from("investment_income").insert({asset_id:$("ra").value,date:$("rd").value,kind:$("rk").value,gross:g,tax_withheld:t});
+    if(error){alert("Erro: "+error.message);return;}rl();};
+  document.querySelectorAll("[data-ri]").forEach(b=>b.onclick=async()=>{if(!confirm("Apagar este rendimento? O caixa da conta será recalculado."))return;
+    const {error}=await sb.from("investment_income").delete().eq("id",b.dataset.ri);
+    if(error)alert("Erro: "+error.message);viewInv();});
   document.querySelectorAll("[data-od]").forEach(b=>b.onclick=async()=>{if(!confirm("Apagar esta operação? O preço médio será recalculado."))return;
     const {error}=await sb.from("investment_operations").delete().eq("id",b.dataset.od);
     if(error)alert("Erro: "+error.message);viewInv();});
