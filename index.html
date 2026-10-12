@@ -351,13 +351,16 @@ function viewTr(){
   const TA=S.accounts.filter(a=>a.type!=="benefit"),nc=TA.filter(a=>a.type!=="credit_card");
   const from=T.from||(nc[0]||TA[0]).id;
   const to=T.to||(TA.find(a=>a.id!==from)||TA[0]).id;
-  const opt=sel=>TA.map(a=>`<option value="${a.id}" ${a.id===sel?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("");
+  const ol=(a,sel)=>`<option value="${a.id}" ${a.id===sel?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`;
+  const opt=sel=>{const done={};let h="";TA.forEach(a=>{const g=gk(a);if(!g){h+=ol(a,sel);return;}if(done[g])return;done[g]=1;
+    const mem=TA.filter(x=>gk(x)===g).sort((x,y)=>(y.currency.trim()==="BRL")-(x.currency.trim()==="BRL"));
+    h+=`<optgroup label="🌎 ${esc(a.group_name.trim())}">${mem.map(x=>ol(x,sel)).join("")}</optgroup>`;});return h;};
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>${T.pay?"Pagar fatura":"Transferir entre contas"}</b>
    <label>De (origem)<select id="tf">${opt(from)}</select></label>
    <label>Para (destino)<select id="tt">${opt(to)}</select></label>
    <label>Valor<input id="tv" inputmode="decimal" placeholder="0,00" value="${fa(T.amt)}"></label>
    <label id="tw" hidden>Valor recebido (na moeda do destino)<input id="tx" inputmode="decimal" placeholder="0,00"></label>
-   <label id="tq" hidden>Cotação (R$ por 1 unidade da moeda estrangeira)<input id="tqv" inputmode="decimal" placeholder="Ex.: 5,20"></label><p id="th" class="mu"></p>
+   <label id="tq" hidden>Cotação (R$ por 1 unidade da moeda estrangeira)<input id="tqv" inputmode="decimal" placeholder="Ex.: 5,20"></label><p id="th" class="mu"></p><div id="tg" hidden style="border:1px solid var(--bd);border-radius:10px;padding:10px;margin:8px 0"></div>
    <label>Data<input id="td" type="date" value="${today()}"></label>
    <label>Descrição<input id="tds" value="${esc(T.desc||"")}"></label>
    <button class="pri" id="ts">Confirmar</button><p id="tm" class="neg"></p>
@@ -368,7 +371,12 @@ function viewTr(){
     if(!conv()||!(v>0)||!(r>0))return;
     if(cf==="BRL")h.textContent=`Cotação efetiva: ${fx4(v/r)} por 1 ${ct}.`;
     else{const I=S.intl[f];if(I&&I.avg)h.textContent=`Custo médio ${fx4(I.avg)} · resultado cambial estimado: ${fmt(r-v*I.avg,"BRL")}.`;}};
-  const sync=()=>{$("tw").hidden=cur($("tf").value)===cur($("tt").value);$("tq").hidden=!conv();th();};
+  const hint=()=>{const g=$("tg"),f=S.accounts.find(x=>x.id===$("tf").value),t=S.accounts.find(x=>x.id===$("tt").value);g.hidden=true;g.innerHTML="";
+    if(!f||!t)return;const sb2=brlSib(t);
+    if(f.currency.trim()==="BRL"&&t.currency.trim()!=="BRL"&&sb2&&sb2.id!==f.id){g.hidden=false;
+      g.innerHTML=`<div class="mu">Você escolheu o saldo em ${esc(t.currency.trim())} de <b>${esc(t.name)}</b>: isto converte os reais agora. Para só enviar os reais, sem converter (a conversão você faz depois, em Internacional), use o saldo em reais:</div><button class="sec" id="tgb" type="button">Enviar só em reais para ${esc(sb2.name)}</button>`;
+      $("tgb").onclick=()=>{$("tt").value=sb2.id;sync();};}};
+  const sync=()=>{$("tw").hidden=cur($("tf").value)===cur($("tt").value);$("tq").hidden=!conv();th();hint();};
   const qt=()=>{const v=num($("tv").value),q=num($("tqv").value);
     if(conv()&&v>0&&q>0)$("tx").value=fa((cur($("tf").value)==="BRL"?v/q:v*q).toFixed(2));th();};
   $("tf").onchange=sync;$("tt").onchange=sync;$("tv").oninput=qt;$("tqv").oninput=qt;$("tx").oninput=th;sync();
@@ -383,7 +391,7 @@ function viewTr(){
     if(diff&&!(vt>0))return $("tm").textContent="Informe o valor recebido.";
     $("ts").disabled=true;
     const {error}=await sb.rpc("create_transfer",{p_from:f,p_to:t,p_amount:v,p_date:$("td").value,
-      p_description:$("tds").value.trim()||(T.pay?"Pagamento de fatura":"Transferência"),p_amount_to:vt,p_statement_month:T.stm||null});
+      p_description:$("tds").value.trim()||(T.pay?"Pagamento de fatura":diff?(cur(f)==="BRL"?"Conversão ":"Venda ")+cur(f)+" → "+cur(t):"Transferência"),p_amount_to:vt,p_statement_month:T.stm||null});
     if(error){$("ts").disabled=false;return $("tm").textContent="Erro: "+error.message;}
     S.tr=null;go(S.trFrom||"acc");};
 }
@@ -533,16 +541,24 @@ async function loadIntl(){
   const m={};(data||[]).forEach(x=>{m[x.account_id]={qty:Number(x.qty)||0,cost:Number(x.cost_base)||0,avg:x.avg_cost==null?null:Number(x.avg_cost),name:x.name,cur:x.currency.trim()};});
   S.intl=m;return m;}
 const fx4=v=>"R$ "+Number(v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:4});
+const gk=a=>a&&a.group_name?String(a.group_name).trim().toLowerCase():"";
+const brlSib=a=>{const g=gk(a);return g?S.accounts.find(x=>x.id!==a.id&&gk(x)===g&&x.currency.trim()==="BRL")||null:null;};
+const grpNames=()=>[...new Set(S.accounts.map(a=>a.group_name&&a.group_name.trim()).filter(Boolean))];
 async function viewIntl(){
   $("main").innerHTML='<div class="card mu">Carregando…</div>';
   const hid=S.hid;
-  const [m,sl]=await Promise.all([loadIntl(),sb.from("fx_sales").select("*").eq("household_id",hid).order("date",{ascending:false}).limit(20)]);
+  const [m,sl,cv,ab]=await Promise.all([loadIntl(),sb.from("fx_sales").select("*").eq("household_id",hid).order("date",{ascending:false}).limit(20),
+    sb.from("fx_conversions").select("*").eq("household_id",hid).order("date",{ascending:false}).limit(20),
+    sb.from("account_balances").select("account_id,balance").eq("household_id",hid)]);
+  const BB={};(ab.data||[]).forEach(r=>{BB[r.account_id]=Number(r.balance)||0;});
+  const cvs=(cv.data||[]).filter(x=>S.accounts.some(a=>a.id===x.account_id)),cvB=cvs.reduce((t,x)=>t+Number(x.brl_paid),0),cvQ=cvs.reduce((t,x)=>t+Number(x.foreign_qty),0);
   if(S.tab!=="intl"||S.hid!==hid)return;
   if(sl.error){$("main").innerHTML=`<div class="card neg">${esc(sl.error.message)}</div>`;return;}
   const L=Object.entries(m).filter(([id])=>S.accounts.some(a=>a.id===id)).map(([id,x])=>({id,...x}));
   const brl=S.accounts.find(a=>a.currency.trim()==="BRL"&&!["benefit","credit_card","investment"].includes(a.type));
   const totC=L.reduce((t,x)=>t+x.cost,0),sales=(sl.data||[]).filter(x=>S.accounts.some(a=>a.id===x.account_id)),totR=sales.reduce((t,x)=>t+Number(x.result),0);
-  const box=x=>`<div class="card"><b>${esc(x.name)}</b> <span class="mu">${esc(x.cur)}</span>
+  const box=x=>{const A=S.accounts.find(a=>a.id===x.id),sb2=A&&brlSib(A);return `<div class="card"><b>${esc(x.name)}</b> <span class="mu">${esc(x.cur)}${A&&A.group_name?" · "+esc(A.group_name.trim()):""}</span>
+    ${sb2?`<div class="row"><span class="mu">Reais para converter (${esc(sb2.name)})</span><b>${fmt(BB[sb2.id]||0,"BRL")}</b></div>`:""}
     <div class="row"><span class="mu">Saldo</span><b>${fmt(x.qty,x.cur)}</b></div>
     <div class="row"><span class="mu">Custo em reais</span><span>${fmt(x.cost,"BRL")}</span></div>
     <div class="row"><span class="mu">Custo médio</span><span>${x.avg?fx4(x.avg)+" por 1 "+esc(x.cur):"—"}</span></div>
@@ -551,11 +567,13 @@ async function viewIntl(){
     <label>Posso gastar? Valor em ${esc(x.cur)}<input class="ip" data-a="${x.id}" inputmode="decimal" placeholder="0,00"></label>
     <div class="mu ipr" data-a="${x.id}"></div>
     <div class="seg" style="margin-top:12px"><button data-cv="${x.id}">Converter (comprar)</button><button data-vd="${x.id}">Vender</button></div>
-    <button class="sec" data-lc="${x.id}">📋 Ver lançamentos</button></div>`;
+    <button class="sec" data-lc="${x.id}">📋 Ver lançamentos</button></div>`;};
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>🌎 Internacional</b>
     ${L.length?`<div class="row"><span class="mu">Custo total em reais</span><b>${fmt(totC,"BRL")}</b></div><div class="mu">O custo médio muda só quando entra moeda nova (conversão). Gastar não altera o custo médio.</div>`
       :'<p class="mu">Nenhuma conta em moeda estrangeira. Em <b>Contas</b>, crie uma conta com a moeda (ex.: USD) e use <b>Transferir</b> para converter reais nela.</p>'}</div>
     ${L.map(box).join("")}
+    ${cvs.length?`<div class="card"><b>Conversões (reais → moeda)</b>${cvs.map(x=>{const A=S.accounts.find(a=>a.id===x.account_id);return `<div class="row"><div>${fdt(x.date)} · ${fmt(x.brl_paid,"BRL")} → ${fmt(x.foreign_qty,x.currency)}<div class="mu">${A?esc(A.name)+" · ":""}${esc(x.description||"")}</div></div><b>${fx4(x.rate)}</b></div>`;}).join("")}
+      ${cvQ>0?`<div class="row"><b>Cotação média das listadas</b><b>${fx4(cvB/cvQ)}</b></div>`:""}<div class="mu">Últimas 20 conversões. O custo médio da conta considera todas elas, e não só estas.</div></div>`:(cv.error?`<div class="card mu">Histórico de conversões indisponível: ${esc(cv.error.message)}</div>`:"")}
     ${sales.length?`<div class="card"><b>Vendas de moeda</b>${sales.map(x=>`<div class="row"><div>${fdt(x.date)} · ${fmt(x.foreign_qty,x.currency)}<div class="mu">recebido ${fmt(x.brl_received,"BRL")} · custo ${fmt(x.brl_cost,"BRL")}</div></div><b class="${Number(x.result)<0?"neg":"pos"}">${fmt(x.result,"BRL")}</b></div>`).join("")}
       <div class="row"><b>Resultado das vendas listadas</b><b class="${totR<0?"neg":"pos"}">${fmt(totR,"BRL")}</b></div></div>`:""}
     <div class="card mu">A cotação de hoje fica guardada só neste aparelho e serve apenas para estimar o ganho ou a perda não realizada. Ela não altera nenhum lançamento.</div>`;
@@ -567,8 +585,8 @@ async function viewIntl(){
   document.querySelectorAll(".iq").forEach(i=>i.oninput=()=>{lsSet("fxq_"+i.dataset.a,i.value.trim());upd(i.dataset.a);});
   document.querySelectorAll(".ip").forEach(i=>i.oninput=()=>upd(i.dataset.a));
   L.forEach(x=>upd(x.id));
-  document.querySelectorAll("[data-cv]").forEach(b=>b.onclick=()=>{S.tr={to:b.dataset.cv};S.trFrom="intl";go("tr");});
-  document.querySelectorAll("[data-vd]").forEach(b=>b.onclick=()=>{S.tr={from:b.dataset.vd,to:brl&&brl.id};S.trFrom="intl";go("tr");});
+  document.querySelectorAll("[data-cv]").forEach(b=>b.onclick=()=>{const A=S.accounts.find(a=>a.id===b.dataset.cv),s2=A&&brlSib(A);S.tr={to:b.dataset.cv,from:s2?s2.id:undefined};S.trFrom="intl";go("tr");});
+  document.querySelectorAll("[data-vd]").forEach(b=>b.onclick=()=>{const A=S.accounts.find(a=>a.id===b.dataset.vd),s2=A&&brlSib(A);S.tr={from:b.dataset.vd,to:s2?s2.id:(brl&&brl.id)};S.trFrom="intl";go("tr");});
   document.querySelectorAll("[data-lc]").forEach(b=>b.onclick=()=>{S.fAcc=b.dataset.lc;S.lper="all";S.lim=50;go("list");});
 }
 
@@ -580,11 +598,21 @@ async function viewAcc(){
     sb.from("wallet_balances").select("wallet_id,balance").eq("household_id",S.hid)]);
   const WB={};(wbd||[]).forEach(r=>{WB[r.wallet_id]=Number(r.balance);});
   const wbk=a=>{const L=walletsOf(a.account_id);return `<div style="padding:0 0 8px 14px;border-bottom:1px solid var(--bd)">${L.length?L.map(w=>`<div class="row" style="border:0;padding:6px 0"><div>${esc(w.name)}<div class="mu">${w.expected_amount?"esperado "+fmt(w.expected_amount,a.currency)+" · ":""}${walWhen(w)}</div></div><div style="text-align:right">${fmt(WB[w.id]||0,a.currency)}<button class="x" data-cr="${w.id}">+ Crédito</button></div></div>`).join(""):'<div class="mu">Nenhuma carteira. Crie em ⚙ da conta.</div>'}</div>`;};
-  $("main").innerHTML=`<div class="card"><b>Contas</b> <button class="x" id="tb">🔁 Transferir</button>${(bal||[]).filter(a=>S.accounts.some(x=>x.id===a.account_id)).map(a=>`<div class="row"><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}<button class="x" data-mg="${a.account_id}">⚙</button>${a.currency.trim()!=="BRL"?`<div class="mu">≈ ${mm(a.balance_base)} em reais (custo)</div>`:""}${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Fatura</button></div>`:""}</div></div>${a.type==="benefit"?wbk(a):""}`).join("")||'<p class="mu">Nenhuma conta.</p>'}</div>
+  const rowH=(a,ind)=>`<div class="row"${ind?' style="padding-left:16px"':""}><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}<button class="x" data-mg="${a.account_id}">⚙</button>${a.currency.trim()!=="BRL"?`<div class="mu">≈ ${mm(a.balance_base)} em reais (custo)</div>`:""}${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Fatura</button></div>`:""}</div></div>${a.type==="benefit"?wbk(a):""}`;
+  const vis=(bal||[]).filter(a=>S.accounts.some(x=>x.id===a.account_id)),byAcc={};S.accounts.forEach(x=>{byAcc[x.id]=x;});
+  let AL="";const seen={};
+  vis.forEach(a=>{const ac=byAcc[a.account_id],g=gk(ac);
+    if(!g){AL+=rowH(a,false);return;}
+    if(seen[g])return;seen[g]=1;
+    const mem=vis.filter(x=>gk(byAcc[x.account_id])===g).sort((x,y)=>(y.currency.trim()==="BRL")-(x.currency.trim()==="BRL"));
+    const tot=mem.reduce((t,x)=>t+Number(x.balance_base||0),0);
+    AL+=`<div class="row" style="background:rgba(127,127,127,.08);padding-left:8px;padding-right:8px"><div><b>🌎 ${esc(ac.group_name.trim())}</b><div class="mu">${mem.length} ${mem.length===1?"conta":"contas"}</div></div><div style="text-align:right"><b>≈ ${mm(tot)}</b><div class="mu">reais + moeda ao custo</div></div></div>`+mem.map(x=>rowH(x,true)).join("");});
+  $("main").innerHTML=`<div class="card"><b>Contas</b> <button class="x" id="tb">🔁 Transferir</button>${AL||'<p class="mu">Nenhuma conta.</p>'}</div>
   <div class="card"><b>Nova conta</b>
    <label>Nome<input id="an"></label>
    <label>Tipo<select id="at">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label>
    <label>Moeda (3 letras)<input id="ac" value="BRL" maxlength="3"></label>
+   <label>Grupo internacional (opcional)<input id="ag" list="agl" placeholder="Ex.: ARQ Internacional"><datalist id="agl">${grpNames().map(n=>`<option value="${esc(n)}">`).join("")}</datalist></label>
    <label>Cartão: dia de fechamento<input id="acl" type="number" min="1" max="31"></label>
    <label>Cartão: dia de vencimento<input id="adu" type="number" min="1" max="31"></label>
    <button class="pri" id="ads">Adicionar</button><p id="amsg" class="neg"></p></div>
@@ -594,8 +622,10 @@ async function viewAcc(){
   $("ads").onclick=async()=>{
     const cl=+$("acl").value,du=+$("adu").value,card=$("at").value==="credit_card";
     if(card&&!(cl>=1&&cl<=31&&du>=1&&du<=31))return $("amsg").textContent="Cartão: informe os dias de fechamento e vencimento (1 a 31).";
-    const {data:na,error}=await sb.from("accounts").insert({household_id:S.hid,name:$("an").value,type:$("at").value,currency:$("ac").value.toUpperCase()}).select("id").single();
-    if(error)return $("amsg").textContent=error.message;
+    const gn=$("ag").value.trim();
+    if(gn&&!["checking","cash"].includes($("at").value))return $("amsg").textContent="Grupo internacional só para conta corrente ou dinheiro.";
+    const {data:na,error}=await sb.from("accounts").insert({household_id:S.hid,name:$("an").value,type:$("at").value,currency:$("ac").value.toUpperCase(),group_name:gn||null}).select("id").single();
+    if(error)return $("amsg").textContent=error.message.includes("accounts_group_uq")?"Já existe, neste grupo, uma conta ativa nesta moeda.":error.message;
     if(card){const r=await sb.from("credit_cards").insert({household_id:S.hid,account_id:na.id,closing_day:cl,due_day:du});if(r.error)return $("amsg").textContent="Conta criada, mas o cartão não: "+r.error.message;await sb.from("card_holders").insert({household_id:S.hid,account_id:na.id,name:"Titular"});}
     await loadRef();viewAcc();};
   $("gc").onclick=()=>{S.catFrom="acc";go("cat");};$("gv").onclick=()=>go("ver");$("gx").onclick=()=>go("intl");$("gi").onclick=()=>{S.im="";go("inv");};
@@ -1164,6 +1194,10 @@ async function viewAcm(){
      <label>Na data (último dia de um mês)<input type="date" id="aod" value="${a.opening_date||""}"></label>
      <button class="sec" id="aos">Salvar saldo inicial</button>${a.opening_date?'<button class="x" id="aoc" style="margin-top:8px">Remover saldo inicial</button>':""}
      <p class="mu">Informe o saldo do extrato no último dia de um mês (ex.: 31/12/2025). Os lançamentos até essa data continuam visíveis e contam no Resultado, mas não somam no saldo. Use a mesma data em todas as contas. Para mudar a data de uma conta com fechamentos, reabra antes os fechamentos posteriores.</p></div>`:""}
+   ${a.type==="checking"||a.type==="cash"?`<div class="card" style="margin-top:12px"><b>Grupo internacional</b>
+     <label>Nome do grupo<input id="agn" list="agl2" placeholder="Ex.: ARQ Internacional" value="${esc((a.group_name||"").trim())}"></label><datalist id="agl2">${grpNames().map(n=>`<option value="${esc(n)}">`).join("")}</datalist>
+     <button class="sec" id="agsv">Salvar grupo</button>
+     <p class="mu">Use o MESMO nome na conta em reais e na conta em dólar do mesmo banco. Em Contas elas aparecem juntas e, em Transferir e Internacional, o app sabe qual é a conta em reais do banco. Só pode haver uma conta ativa por moeda em cada grupo. Deixe vazio para tirar do grupo.</p></div>`:""}
    ${a.type==="credit_card"?`<div class="card" style="margin-top:12px"><b>Mês de partida da dívida</b>
      <label>A partir de<input type="month" id="asm" value="${a.start_month?a.start_month.slice(0,7):""}"></label>
      <button class="sec" id="asv">Salvar partida</button>
@@ -1189,6 +1223,8 @@ async function viewAcm(){
   if($("aoc"))$("aoc").onclick=async()=>{if(!confirm("Remover o saldo inicial desta conta?"))return;
     const {error}=await sb.from("accounts").update({opening_balance:null,opening_date:null}).eq("id",a.id);
     if(error)return say("Erro: "+error.message);await loadRef();viewAcm();};
+  if($("agsv"))$("agsv").onclick=async()=>{const g=$("agn").value.trim(),{error}=await sb.from("accounts").update({group_name:g||null}).eq("id",a.id);
+    if(error)return say(error.message.includes("accounts_group_uq")?"Já existe, neste grupo, uma conta ativa nesta moeda.":"Erro: "+error.message);await loadRef();viewAcm();};
   if($("asv"))$("asv").onclick=async()=>{const v=$("asm").value,{error}=await sb.from("accounts").update({start_month:v?v+"-01":null}).eq("id",a.id);
     if(error)return say("Erro: "+error.message);await loadRef();viewAcm();};
   $("ai").onclick=async()=>{
