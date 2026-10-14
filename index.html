@@ -758,6 +758,8 @@ async function viewPar(msg){
   const orig=data.reduce((s,t)=>s+cents(t),0);
   const have=new Set(data.map(t=>t.installment_number)),maxN=data[data.length-1].installment_number,ref=data[0],tot=ref.installment_total;
   const miss=[];for(let i=1;i<maxN;i++)if(!have.has(i))miss.push(i);
+  const mx=maxN-1,pb=lo?Number(lo.paid_before)||0:0,drop=lo?Number(lo.monthly_drop)||0:0;
+  const vOf=i=>Math.round((Math.abs(ref.amount)+(ref.installment_number-i)*drop)*100);
   const missTxt=()=>{const g=[];miss.forEach(i=>{const l=g[g.length-1];if(l&&l[1]===i-1)l[1]=i;else g.push([i,i]);});return g.map(([a,b])=>a===b?a:a+" a "+b).join(", ");};
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>${lo?"Parcelas do contrato":"Parcelas da compra"}</b>
    <div class="mu">${esc(lo?lo.name:(data[0].description||"Sem descrição"))} · ${esc(data[0].categories?.name||"—")} · ${esc(data[0].accounts?.name)}</div>
@@ -770,10 +772,12 @@ async function viewPar(msg){
    <button class="pri" id="psv">Salvar parcelas</button>
    ${lo?"":'<button class="sec neg" id="pdel">Apagar compra inteira</button>'}
    <p id="pm" class="neg">${esc(msg||"")}</p>
-   ${!lo&&miss.length?`<div class="card" style="margin-top:12px"><b>Parcelas anteriores</b>
-     <p class="mu">Esta compra tem as parcelas ${esc(missTxt())} de ${tot} ainda não lançadas. Gere as que quiser para manter o histórico: usam a mesma conta, categoria, descrição, portador e o valor da parcela ${ref.installment_number}/${tot}, com a data recuando mês a mês.</p>
-     <div style="display:flex;gap:8px"><label style="flex:1">De a nº<input id="pgf" type="number" min="1" max="${maxN-1}" inputmode="numeric" value="${miss[miss.length-1]}"></label>
-     <label style="flex:1">Até a nº<input id="pgt" type="number" min="1" max="${maxN-1}" inputmode="numeric" value="${miss[miss.length-1]}"></label></div>
+   ${miss.length&&(!lo||pb>0)?`<div class="card" style="margin-top:12px"><b>Parcelas anteriores</b>
+     <p class="mu">${lo?`Este contrato foi cadastrado com ${pb} parcela(s) já paga(s) que ainda não têm lançamento (nº ${esc(missTxt())} de ${tot}). Gere as que quiser para manter o histórico: usam a mesma conta, categoria e descrição da parcela ${ref.installment_number}/${tot}, ${drop>0?"com o valor subindo conforme a queda mensal do SAC":"com o mesmo valor dela"} e a data recuando mês a mês. As contagens de pagas e de faltantes do contrato não mudam.`
+       :`Esta compra tem as parcelas ${esc(missTxt())} de ${tot} ainda não lançadas. Gere as que quiser para manter o histórico: usam a mesma conta, categoria, descrição, portador e o valor da parcela ${ref.installment_number}/${tot}, com a data recuando mês a mês.`}</p>
+     <div style="display:flex;gap:8px"><label style="flex:1">De a nº<input id="pgf" type="number" min="1" max="${mx}" inputmode="numeric" value="${lo?miss[0]:miss[miss.length-1]}"></label>
+     <label style="flex:1">Até a nº<input id="pgt" type="number" min="1" max="${mx}" inputmode="numeric" value="${miss[miss.length-1]}"></label></div>
+     ${lo?'<p id="pgp" class="mu"></p>':""}
      <button class="sec" id="pgo">Gerar parcelas anteriores</button><p id="pgm" class="neg"></p></div>`:""}
    ${lo?"":`<p class="mu">Total original = soma das parcelas ao abrir esta tela (${fmt(orig/100,cur)}).</p>`}</div>`;
   const vals=()=>[...document.querySelectorAll("[data-pv]")].map(el=>Math.round(num(el.value)*100));
@@ -800,11 +804,28 @@ async function viewPar(msg){
       if(error)return viewPar(`Erro na parcela ${t.installment_number}/${t.installment_total}: ${error.message}. A tela mostra o que está salvo.`);
       n++;}
     viewPar(n?`${n} parcela(s) salva(s) ✓`:"Nada foi alterado.");};
+  const pgSel=()=>{const a=parseInt($("pgf").value),b=parseInt($("pgt").value);
+    if(!(a>=1&&b>=a&&b<=mx))return null;return {a,b,nums:miss.filter(i=>i>=a&&i<=b)};};
+  const pgPrev=()=>{const el=$("pgp");if(!el)return;const r=pgSel();
+    if(!r||!r.nums.length){el.textContent="";return;}
+    const sum=r.nums.reduce((s0,i)=>s0+vOf(i),0),f=r.nums[0],l=r.nums[r.nums.length-1];
+    el.textContent=`Serão geradas ${r.nums.length} parcela(s) (estimativa): nº ${f} = ${fmt(vOf(f)/100,cur)}`+(l!==f?` até nº ${l} = ${fmt(vOf(l)/100,cur)}`:"")+` · soma ${fmt(sum/100,cur)}.`;};
+  if($("pgo")){["pgf","pgt"].forEach(k=>$(k).oninput=pgPrev);pgPrev();}
   if($("pgo"))$("pgo").onclick=async()=>{
-    const a=parseInt($("pgf").value),b=parseInt($("pgt").value);
-    if(!(a>=1&&b>=a&&b<maxN))return $("pgm").textContent=`Informe um intervalo entre 1 e ${maxN-1} (De não pode passar de Até).`;
-    const nums=miss.filter(i=>i>=a&&i<=b);
+    const r=pgSel();
+    if(!r)return $("pgm").textContent=`Informe um intervalo entre 1 e ${mx} (De não pode passar de Até).`;
+    const nums=r.nums,a=r.a,b=r.b;
     if(!nums.length)return $("pgm").textContent="Nada a gerar: essas parcelas já existem.";
+    if(lo){
+      if(nums.length>pb)return $("pgm").textContent=`O contrato tem só ${pb} parcela(s) anterior(es) sem lançamento.`;
+      const sum=nums.reduce((s0,i)=>s0+vOf(i),0);
+      if(!confirm(`Gerar ${nums.length} parcela(s) anterior(es) (nº ${nums.join(", ")}), somando cerca de ${fmt(sum/100,cur)}?\n\nElas entram como PAGAS na conta "${ref.accounts?.name||"do contrato"}" e mudam o saldo dela, o Resultado e as metas dos meses em que caem. Se você já lançou esses pagamentos como despesas comuns, vai duplicar.`))return;
+      $("pgo").disabled=true;
+      const {data:ng,error}=await sb.rpc("generate_previous_loan_installments",{p_contract_id:lo.id,p_from:a,p_to:b});
+      if(error){$("pgo").disabled=false;return $("pgm").textContent="Erro: "+error.message;}
+      await loadLoans();
+      return viewPar(`${ng} parcela(s) anterior(es) gerada(s) ✓. Confira datas e valores abaixo e corrija o que o banco realmente cobrou.`);
+    }
     const vv=Math.abs(ref.amount),gid=S.par;
     const rows=nums.map(i=>{const d=dAdd(ref.date,i-ref.installment_number);
       return {account_id:ref.account_id,date:d,amount:sign*vv,category_id:ref.category_id,description:ref.description,status:d>today()?"planned":"posted",
