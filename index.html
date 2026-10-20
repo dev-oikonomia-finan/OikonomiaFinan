@@ -442,6 +442,10 @@ async function viewList(){
     .eq("accounts.household_id",S.hid);
   let sq=sb.from("transactions").select("amount,fx_rate_to_base,transfer_group_id,accounts!inner(household_id,type,is_active)").eq("accounts.household_id",S.hid);
   if(S.fAcc){q=q.eq("account_id",S.fAcc);sq=sq.eq("account_id",S.fAcc);}else sq=sq.in("accounts.type",["checking","cash","credit_card","benefit"]).eq("accounts.is_active",true);
+  const fb=S.fAcc?S.accounts.find(a=>a.id===S.fAcc&&a.type==="benefit"):null;
+  if(fb&&S.fWal&&!S.wallets.some(w=>w.id===S.fWal&&w.account_id===fb.id))S.fWal=null;
+  if(!fb)S.fWal=null;
+  if(fb&&S.fWal)q=q.eq("wallet_id",S.fWal);
   const mon=S.lper==="mon",m0=S.lmon||(S.lmon=today().slice(0,8)+"01");
   const fc=S.fAcc&&S.accounts.find(a=>a.id===S.fAcc&&a.type==="credit_card");
   const cids=S.accounts.filter(a=>a.type==="credit_card").map(a=>a.id),byStm=mon&&!S.fAcc&&cm()==="stm"&&cids.length>0;
@@ -512,6 +516,45 @@ async function viewList(){
     <div class="row"><b>${QD.proj?"Saldo final projetado":"Saldo final"}</b><b class="${sc(qdFin)}">${mm(qdFin)}</b></div>
     <div class="mu">Soma as contas correntes e de dinheiro ativas, como o Disponível do Painel; deve bater com a soma dos extratos quando os lançamentos estiverem completos. Cartões e vale ficam de fora. Saldo do mês anterior: fechamento do mês, ou saldo inicial mais os lançamentos.${QD.proj?" Inclui lançamentos previstos até o fim do mês.":""}</div>
     ${QD.sem.length?`<div class="mu" style="color:var(--yel)">Sem saldo inicial nem fechamento (saldo só pelos lançamentos): ${QD.sem.map(esc).join(", ")}.</div>`:""}`}`:"";
+  let wqHtml="",wchips="";
+  if(fb){
+    const wsAll=S.wallets.filter(w=>w.account_id===fb.id),cur=fb.currency.trim(),mw=v=>fmt(Number(v)||0,cur);
+    wchips=`<div class="chips"><button data-fw="" class="${S.fWal?"":"on"}">Todas as carteiras</button>${wsAll.map(w=>`<button data-fw="${w.id}" class="${S.fWal===w.id?"on":""}">${esc(w.name)}${w.is_active?"":" (inativa)"}</button>`).join("")}</div>`;
+    if(mon){
+      const pm=mAdd(m0,-1),m1=mAdd(m0,1);
+      const [mq,cq,bq]=await Promise.all([
+        sb.from("transactions").select("amount,wallet_id,date").eq("account_id",fb.id).in("status",["posted","planned"]).gte("date",m0).lt("date",m1).limit(5000),
+        sb.from("balance_closings").select("id").eq("account_id",fb.id).eq("ref_month",pm).maybeSingle(),
+        sb.rpc("wallet_balance_before",{p_account:fb.id,p_date:m0})]);
+      const e0=[mq,cq,bq].find(r=>r.error);
+      if(e0)wqHtml=`<p class="neg">${esc(e0.error.message)}</p><p class="mu">Se a função não existe, rode o script vale_saldo_por_carteira.sql no Supabase.</p>`;
+      else{
+        let wcl=[];
+        if(cq.data){const r=await sb.from("wallet_closings").select("wallet_id,reported_balance").eq("closing_id",cq.data.id);wcl=r.error?[]:(r.data||[]);}
+        const rep={};wcl.forEach(r=>{rep[r.wallet_id]=Number(r.reported_balance)||0;});
+        const prv={};(bq.data||[]).forEach(r=>{prv[r.wallet_id]=Number(r.balance)||0;});
+        const mv={};(mq.data||[]).forEach(x=>{const w=wsAll.find(z=>z.id===x.wallet_id);
+          if(!w||(w.opening_date&&x.date<=w.opening_date))return;
+          const o=mv[w.id]=mv[w.id]||{i:0,e:0},v=Number(x.amount)||0;if(v>0)o.i+=v;else o.e+=v;});
+        const rows=wsAll.map(w=>{const o=mv[w.id]||{i:0,e:0},hasC=rep[w.id]!=null,p=hasC?rep[w.id]:(prv[w.id]||0);return {w,p,hasC,i:o.i,e:o.e,f:p+o.i+o.e};})
+          .filter(r=>r.w.is_active||Math.abs(r.p)>=0.005||r.i||r.e);
+        const T=rows.reduce((t,r)=>({p:t.p+r.p,i:t.i+r.i,e:t.e+r.e,f:t.f+r.f}),{p:0,i:0,e:0,f:0});
+        const proj=m0>=today().slice(0,8)+"01",oldCl=cq.data&&!wcl.length;
+        wqHtml=`<b style="display:block;margin-top:10px">Saldo por carteira</b>
+         ${rows.length?rows.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--bd)"><div class="row" style="border:0;padding:0"><span>${esc(r.w.name)}${r.w.is_active?"":' <span class="mu">(inativa)</span>'}</span><b class="${sc(r.f)}">${mw(r.f)}</b></div><div class="mu">anterior ${mw(r.p)}${r.hasC?"":" (calculado)"} · créditos ${mw(r.i)} · gastos ${mw(r.e)}</div></div>`).join(""):'<p class="mu">Nenhuma carteira nesta conta.</p>'}
+         <b style="display:block;margin-top:10px">Total da conta</b>
+         <div class="row"><span class="mu">Saldo do mês anterior</span><span>${mw(T.p)}</span></div>
+         <div class="row"><span class="mu">Créditos do mês</span><span class="pos">${mw(T.i)}</span></div>
+         <div class="row"><span class="mu">Gastos do mês</span><span class="neg">${mw(T.e)}</span></div>
+         <div class="row"><b>${proj?"Saldo final projetado":"Saldo final"}</b><b class="${sc(T.f)}">${mw(T.f)}</b></div>
+         ${oldCl?`<div class="mu">O fechamento de ${esc(mlab(pm))} foi gravado só com o total; o saldo anterior por carteira é calculado.</div>`:""}
+         <div class="mu">${proj?"Inclui lançamentos previstos até o fim do mês. ":""}Toque em uma carteira acima para filtrar a lista.</div>`;
+      }
+    }else{
+      const sh=wsAll.filter(w=>w.is_active||Math.abs(S.wbal[w.id]||0)>=0.005);
+      wqHtml=`<b style="display:block;margin-top:10px">Saldo atual por carteira</b>${sh.length?sh.map(w=>`<div class="row"><span>${esc(w.name)}</span><b class="${sc(S.wbal[w.id]||0)}">${mw(S.wbal[w.id]||0)}</b></div>`).join(""):'<p class="mu">Nenhuma carteira nesta conta.</p>'}`;
+    }
+  }
   let sumHtml="";
   const fi=S.fAcc&&S.accounts.find(a=>a.id===S.fAcc&&a.type==="investment");
   const iv={inc:0,ops:0};
@@ -521,7 +564,8 @@ async function viewList(){
       sb.from("investment_operations").select("side,amount,fees,investment_assets!inner(account_id)").eq("investment_assets.account_id",S.fAcc).gte("date",m0).lt("date",ma)]);
     iv.inc=(ri.data||[]).reduce((r,x)=>r+Number(x.net),0);
     iv.ops=(ro.data||[]).reduce((r,x)=>r+(x.side==="sell"?Number(x.amount)-Number(x.fees):-(Number(x.amount)+Number(x.fees))),0);}
-  if(fi&&mon)sumHtml=`<div class="row"><span class="mu">Saldo do mês anterior${prevOk?"":" (sem fechamento)"}</span><span class="${sc(prev)}">${mm(prev)}</span></div>
+  if(fb)sumHtml=wqHtml;
+  else if(fi&&mon)sumHtml=`<div class="row"><span class="mu">Saldo do mês anterior${prevOk?"":" (sem fechamento)"}</span><span class="${sc(prev)}">${mm(prev)}</span></div>
     <div class="row"><span class="mu">Rendimentos do mês</span><span class="pos">${mm(iv.inc)}</span></div>
     <div class="row"><span class="mu">Compras e vendas de ativos</span><span class="${sc(iv.ops)}">${mm(iv.ops)}</span></div>
     <div class="row"><span class="mu">Aportes (transferências de entrada)</span><span class="pos">${mm(tr.inn)}</span></div>
@@ -551,13 +595,15 @@ async function viewList(){
   $("main").innerHTML=`<div class="card"><div class="seg"><button id="lpm" class="${mon?"on":""}">Mês</button><button id="lpa" class="${mon?"":"on"}">Tudo</button></div>
     ${mon?`<div class="row" style="align-items:center"><button class="x" id="lpp">‹</button><b>${fc?"Fatura de ":""}${mlab(m0)}</b><button class="x" id="lpn">›</button></div>`:""}
     <label style="margin-top:0">Conta<select id="lfa"><option value="">Todas as contas</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.fAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
+    ${wchips}
     ${S.fAcc?"":`<div class="seg" style="margin-top:8px"><button id="lgd" class="${grp?"":"on"}">Por data</button><button id="lga" class="${grp?"on":""}">Agrupar por conta</button></div>${grp&&!mon?'<div class="mu">Em "Tudo", o total de cada conta só aparece quando todos os lançamentos estão carregados.</div>':""}`}
     ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}${sumHtml}</div>
   <div class="card">${data.length?listHtml():`<span class="mu">${S.fAcc?"Nenhum lançamento nesta conta.":"Nenhum lançamento ainda."}</span>`}</div>
   ${data.length>=(grp&&mon?Math.max(S.lim,500):S.lim)?'<button class="sec" id="lm">Carregar mais</button>':""}`;
   if($("gti"))$("gti").onclick=()=>{S.im="";go("inv");};
   if($("lm"))$("lm").onclick=async()=>{const y=window.scrollY;S.lim+=50;await viewList();window.scrollTo(0,y);};
-  $("lfa").onchange=()=>{S.fAcc=$("lfa").value||null;S.lim=50;viewList();};
+  $("lfa").onchange=()=>{S.fAcc=$("lfa").value||null;S.fWal=null;S.lim=50;viewList();};
+  document.querySelectorAll("[data-fw]").forEach(b=>b.onclick=()=>{S.fWal=b.dataset.fw||null;S.lim=50;viewList();});
   if($("lgd")){$("lgd").onclick=()=>{lsSet("listgrp","date");S.lim=50;viewList();};$("lga").onclick=()=>{lsSet("listgrp","acc");S.lim=50;viewList();};}
   if($("cmf")){$("cmf").onclick=()=>{lsSet("cardmode","stm");S.lim=50;viewList();};$("cmb").onclick=()=>{lsSet("cardmode","buy");S.lim=50;viewList();};}
   $("lpm").onclick=()=>{S.lper="mon";S.lim=50;viewList();};$("lpa").onclick=()=>{S.lper="all";S.lim=50;viewList();};
@@ -1232,18 +1278,23 @@ async function viewClo(msg){
   const m=S.cloMon,done=cl.find(c=>c.ref_month===m);
   const {data:calc}=await sb.rpc("closing_balance",{p_account:acc.id,p_ref:m});
   const wl=acc.type==="benefit"&&!done?((await sb.rpc("wallet_closing_balances",{p_account:acc.id,p_ref:m})).data||[]).filter(w=>w.is_active||Number(w.balance)!==0):[];
+  const WC={};
+  if(acc.type==="benefit"&&cl.length){const {data:wr}=await sb.from("wallet_closings").select("closing_id,wallet_id,reported_balance,calculated_balance").in("closing_id",cl.map(c=>c.id));(wr||[]).forEach(r=>{(WC[r.closing_id]=WC[r.closing_id]||[]).push(r);});}
   if(S.tab!=="clo"||S.cloAcc!==acc.id||S.cloMon!==m)return;
   const cv=Number(calc||0),dif=x=>{const d=Math.round(x*100)/100;return d===0?"confere ✓":"diferença "+fmt(d,cur);};
+  const wcHtml=c=>{if(acc.type!=="benefit")return "";const L=WC[c.id]||[];
+    if(!L.length)return '<div class="mu">Gravado só com o total (fechamento anterior ao controle por carteira).</div>';
+    return L.map(r=>`<div class="row" style="border:0;padding:4px 0 4px 12px"><div>${esc(walletName(r.wallet_id)||"Carteira")}<div class="mu">app ${fmt(r.calculated_balance,cur)} · extrato ${fmt(r.reported_balance,cur)}</div></div><span class="mu">${dif(Number(r.reported_balance)-Number(r.calculated_balance))}</span></div>`).join("");};
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Fechamento mensal</b>
    <label>${card?"Cartão":"Conta"}<select id="ca">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===acc.id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
    <div class="row" style="align-items:center"><button class="x" id="cp">‹</button><b>${mlab(m)}</b><button class="x" id="cn">›</button></div>
-   ${done?`<p class="pos">Fechado ✓</p><div class="row"><span>${card?"Total da fatura":"Saldo"} (app)</span><span>${fmt(done.calculated_balance,cur)}</span></div><div class="row"><span>Informado (extrato)</span><span>${fmt(done.reported_balance,cur)}</span></div><div class="mu">${dif(done.reported_balance-done.calculated_balance)}</div>`
+   ${done?`<p class="pos">Fechado ✓</p><div class="row"><span>${card?"Total da fatura":"Saldo"} (app)</span><span>${fmt(done.calculated_balance,cur)}</span></div><div class="row"><span>Informado (extrato)</span><span>${fmt(done.reported_balance,cur)}</span></div><div class="mu">${dif(done.reported_balance-done.calculated_balance)}</div>${wcHtml(done)}`
    :`<div class="row"><span>${card?"Total da fatura no app":"Saldo no app, no fim do mês"}</span><b>${fmt(cv,cur)}</b></div>
    ${wl.length?wl.map(w=>`<label>${esc(w.name)} <span class="mu">(app ${fmt(w.balance,cur)})</span><input class="cw" data-w="${w.wallet_id}" data-a="${w.balance}" inputmode="decimal" placeholder="0,00"><span class="mu" id="cwd${w.wallet_id}"></span></label>`).join("")+`<label>Total no extrato (soma das carteiras)<input id="cv" readonly></label>`:`<label>${card?"Total da fatura no banco":"Saldo no extrato do banco"}<input id="cv" inputmode="decimal" placeholder="0,00"></label>`}
    <p id="cd" class="mu"></p><button class="pri" id="cs">Fechar ${esc(mlab(m))}</button>
    <p class="mu">Fechar congela os lançamentos até este mês${card?" (por fatura)":""}. Para corrigir depois, reabra o último fechamento.</p>`}
    <p id="cm" class="${msg?"pos":"neg"}">${esc(msg||"")}</p></div>
-  <div class="card"><b>Fechamentos</b>${cl.length?cl.map((c,i)=>`<div class="row"><div>${mlab(c.ref_month)}<div class="mu">${fmt(c.reported_balance,cur)} · ${dif(c.reported_balance-c.calculated_balance)}</div></div>${i===0?`<button class="x" data-ro="${c.id}">Reabrir</button>`:""}</div>`).join(""):'<p class="mu">Nenhum fechamento nesta conta.</p>'}</div>`;
+  <div class="card"><b>Fechamentos</b>${cl.length?cl.map((c,i)=>`<div class="row"><div>${mlab(c.ref_month)}<div class="mu">${fmt(c.reported_balance,cur)} · ${dif(c.reported_balance-c.calculated_balance)}</div>${acc.type==="benefit"?`<details><summary>Por carteira</summary>${wcHtml(c)}</details>`:""}</div>${i===0?`<button class="x" data-ro="${c.id}">Reabrir</button>`:""}</div>`).join(""):'<p class="mu">Nenhum fechamento nesta conta.</p>'}</div>`;
   const say=t=>{$("cm").className="neg";$("cm").textContent=t;};
   $("bk").onclick=()=>go("acc");
   $("ca").onchange=()=>{S.cloAcc=$("ca").value;S.cloMon=null;viewClo();};
@@ -1254,13 +1305,14 @@ async function viewClo(msg){
     all.forEach(x=>{const e=document.getElementById("cwd"+x.dataset.w),v=num(x.value);e.textContent=x.value.trim()&&!isNaN(v)?" "+dif(v-Number(x.dataset.a)):"";});
     const t=all.reduce((r,x)=>r+(num(x.value)||0),0);$("cv").value=String(Math.round(t*100)/100).replace(".",",");$("cv").oninput();});
   if($("cs"))$("cs").onclick=async()=>{
-    if([...document.querySelectorAll(".cw")].some(x=>!x.value.trim()))return say("Informe o saldo de todas as carteiras (0 se estiver vazia).");
+    if([...document.querySelectorAll(".cw")].some(x=>!x.value.trim()||isNaN(num(x.value))))return say("Informe o saldo de todas as carteiras (0 se estiver vazia).");
     const v=num($("cv").value);
     if(isNaN(v))return say("Informe o valor do extrato.");
     const d=Math.round((v-cv)*100)/100;
     if(d!==0&&!confirm(`Há diferença de ${fmt(d,cur)} entre o app e o banco. Fechar mesmo assim?`))return;
     $("cs").disabled=true;
-    const {error}=await sb.rpc("close_balance",{p_account:acc.id,p_ref:m,p_reported:v});
+    const ws=[...document.querySelectorAll(".cw")];
+    const {error}=ws.length?await sb.rpc("close_benefit_balance",{p_account:acc.id,p_ref:m,p_wallets:ws.map(x=>({wallet_id:x.dataset.w,reported:num(x.value)}))}):await sb.rpc("close_balance",{p_account:acc.id,p_ref:m,p_reported:v});
     if(error){$("cs").disabled=false;return say(error.message);}
     viewClo("Mês fechado ✓");};
   document.querySelectorAll("[data-ro]").forEach(b=>b.onclick=async()=>{
@@ -1295,7 +1347,7 @@ async function viewAcm(){
      <p class="mu">Só entram no saldo e na dívida do Painel as faturas deste mês em diante (compras e pagamentos). As anteriores continuam visíveis em Lançamentos e na Fatura. Deixe vazio para somar tudo.</p></div>`:""}
    <button class="sec neg" id="ai">Inativar conta</button><p id="am" class="neg"></p>
    <p class="mu">Inativar esconde a conta das telas e do saldo geral; os lançamentos ficam guardados e você pode reativar em Contas. Só é possível com saldo zerado${a.type==="credit_card"?" (cartão sem dívida)":""}.</p></div>`;
-  if(a.type==="benefit"){await loadWallets();if(S.tab!=="acm")return;drawWal(a);}
+  if(a.type==="benefit"){await loadWallets();if(S.tab!=="acm")return;drawWal(a,WALMSG);WALMSG="";}
   const say=t=>{$("am").textContent=t;};
   $("bk").onclick=()=>go("acc");
   $("as").onclick=async()=>{const n=$("an2").value.trim();
@@ -1326,13 +1378,16 @@ async function viewAcm(){
     S.acmId=null;await loadRef();go("acc");};
 }
 
+let WALMSG="";
 function drawWal(a,m){
   const cur=a.currency.trim(),act=S.wallets.filter(w=>w.account_id===a.id&&w.is_active),ina=S.wallets.filter(w=>w.account_id===a.id&&!w.is_active);
   const mo=sel=>'<option value="">Todo mês</option>'+MESES.map((x,i)=>`<option value="${i+1}" ${+sel===i+1?"selected":""}>${x[0].toUpperCase()+x.slice(1)}</option>`).join("");
   $("main").insertAdjacentHTML("beforeend",`<div class="card" id="wcard"><b>Carteiras</b><div class="mu">O saldo da conta é a soma das carteiras.</div>
+   <div class="mu">Saldo inicial: informe o saldo do extrato da carteira no último dia de um mês (ex.: 30/09/2026). Os lançamentos até essa data continuam visíveis, mas não somam; o saldo passa a ser o inicial mais os lançamentos depois da data. Não vira receita.</div>
    ${act.map(w=>`<div style="padding:10px 0;border-bottom:1px solid var(--bd)"><div class="row" style="border:0;padding:0"><input data-wn="${w.id}" value="${esc(w.name)}"><b style="white-space:nowrap;margin-left:8px;align-self:center">${fmt(S.wbal[w.id]||0,cur)}</b></div>
      <div style="display:flex;gap:8px"><label style="flex:1">Valor esperado<input data-we="${w.id}" inputmode="decimal" placeholder="0,00" value="${fa(w.expected_amount)}"></label><label style="flex:1">Cai em<select data-wm="${w.id}">${mo(w.credit_month)}</select></label></div>
-     <button class="x" data-wi="${w.id}" style="margin:8px 0 0">Inativar</button></div>`).join("")||'<p class="mu">Nenhuma carteira ainda.</p>'}
+     <div style="display:flex;gap:8px"><label style="flex:1">Saldo inicial<input data-wob="${w.id}" inputmode="decimal" placeholder="0,00" value="${fa(w.opening_balance)}"></label><label style="flex:1">Na data<input type="date" data-wod="${w.id}" value="${w.opening_date||""}"></label></div>
+     <div style="display:flex;gap:8px;align-items:center;margin-top:8px"><button class="x" data-wos="${w.id}" style="margin:0">Salvar saldo inicial</button>${w.opening_date?`<button class="x" data-woc="${w.id}" style="margin:0">Remover</button>`:""}<button class="x" data-wi="${w.id}" style="margin:0 0 0 auto">Inativar</button></div></div>`).join("")||'<p class="mu">Nenhuma carteira ainda.</p>'}
    <b style="display:block;margin-top:14px">Nova carteira</b>
    <label>Nome<input id="wnn" placeholder="Ex.: Refeição e Alimentação"></label>
    <div style="display:flex;gap:8px"><label style="flex:1">Valor esperado<input id="wne" inputmode="decimal" placeholder="0,00"></label><label style="flex:1">Cai em<select id="wnm">${mo("")}</select></label></div>
@@ -1348,6 +1403,18 @@ function drawWal(a,m){
   document.querySelectorAll("[data-we]").forEach(el=>el.onchange=()=>{const s=el.value.trim(),v=s?num(s):null;
     if(s&&!(v>0))return say("Valor esperado inválido.");upd(el.dataset.we,{expected_amount:v},"Valor salvo ✓");});
   document.querySelectorAll("[data-wm]").forEach(el=>el.onchange=()=>upd(el.dataset.wm,{credit_month:el.value?+el.value:null},"Mês salvo ✓"));
+  const lastDay=d=>{const nx=new Date(d+"T12:00:00");nx.setDate(nx.getDate()+1);return nx.getDate()===1;};
+  document.querySelectorAll("[data-wos]").forEach(b=>b.onclick=async()=>{const id=b.dataset.wos,s0=document.querySelector(`[data-wob="${id}"]`).value,d=document.querySelector(`[data-wod="${id}"]`).value,v=s0.trim()?num(s0):NaN;
+    if(isNaN(v))return say("Informe o saldo do extrato da carteira.");
+    if(!d)return say("Informe a data do saldo.");
+    if(!lastDay(d))return say("Use o último dia de um mês (ex.: 30/09/2026).");
+    const {error}=await sb.from("wallets").update({opening_balance:v,opening_date:d}).eq("id",id);
+    if(error)return say(err(error));
+    WALMSG="Saldo inicial salvo ✓";await loadRef();viewAcm();});
+  document.querySelectorAll("[data-woc]").forEach(b=>b.onclick=async()=>{if(!confirm("Remover o saldo inicial desta carteira?"))return;
+    const {error}=await sb.from("wallets").update({opening_balance:null,opening_date:null}).eq("id",b.dataset.woc);
+    if(error)return say(err(error));
+    WALMSG="Saldo inicial removido ✓";await loadRef();viewAcm();});
   document.querySelectorAll("[data-wi]").forEach(b=>b.onclick=()=>{const id=b.dataset.wi,bal=S.wbal[id]||0;
     if(Math.abs(bal)>=0.005)return say(`O saldo é ${fmt(bal,cur)}. Só é possível inativar carteira com saldo zero.`);
     if(!confirm("Inativar esta carteira?"))return;upd(id,{is_active:false},"Carteira inativada ✓");});
