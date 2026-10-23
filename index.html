@@ -158,11 +158,8 @@ const stm=(c,d)=>{const [y,mo,dd]=d.split("-").map(Number),dim=new Date(y,mo,0).
   if(c.due_day<=c.closing_day)x.setMonth(x.getMonth()+1);
   return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-01";};
 async function loadQs(){
-  const [q,m]=await Promise.all([
-    sb.from("quick_entries").select("*").eq("household_id",S.hid).eq("is_active",true),
-    sb.from("quick_entry_accounts").select("quick_entry_id,account_id").eq("household_id",S.hid).eq("user_id",S.uid)]);
+  const q=await sb.from("quick_entries").select("*").eq("household_id",S.hid).eq("user_id",S.uid).eq("is_active",true);
   S.qs=(q.data||[]).sort((a,b)=>(b.is_favorite-a.is_favorite)||(b.use_count-a.use_count)||a.name.localeCompare(b.name));
-  S.qa=Object.fromEntries((m.data||[]).map(r=>[r.quick_entry_id,r.account_id]));
 }
 function subscribe(){if(S.rt)return;S.rt=true;
   sb.channel("rt").on("postgres_changes",{event:"*",schema:"public",table:"transactions"},()=>{if(S.tab==="list")viewList();}).subscribe();}
@@ -243,7 +240,7 @@ function viewAdd(){
       S.pre={cat:$("cat").value,acc:$("acc").value,amt:$("v").value,desc:d.trim()===q.name?"":d,dt:$("dt").value,wal:$("wl").value};
       viewAdd();$("desc").focus();return;}
     const ok=id=>S.accounts.some(a=>a.id===id)?id:null;
-    S.pre={qid:q.id,cat:q.category_id,acc:ok(S.qa[q.id])||ok(q.default_account_id)||S.lastAcc,desc:q.name,amt:q.default_amount};
+    S.pre={qid:q.id,cat:q.category_id,acc:ok(q.default_account_id)||S.lastAcc,desc:q.name,amt:q.default_amount};
     viewAdd();$("v").focus();});
   const fh=()=>{const c=S.cards.find(x=>x.account_id===$("acc").value),d=$("dt").value;$("fh").textContent=c&&d?"Entra na fatura de "+mlab(stm(c,d)):"";};
   $("dt").oninput=fh;fh();
@@ -279,12 +276,13 @@ function viewAdd(){
   loadWallets().then(()=>{if(S.tab==="add"&&$("wl"))wl();});
   $("acc").onchange=()=>{
     pv();fh();hd();wl();fx();
-    if(!P.qid||$("acc").value===S.qa[P.qid]){$("pin").innerHTML="";return;}
-    $("pin").innerHTML='<button class="lk" id="pb">📌 Usar esta conta como minha neste atalho</button>';
+    const q0=P.qid?S.qs.find(x=>x.id===P.qid):null;
+    if(!q0||$("acc").value===q0.default_account_id){$("pin").innerHTML="";return;}
+    $("pin").innerHTML='<button class="lk" id="pb">📌 Usar esta conta como a conta deste atalho</button>';
     $("pb").onclick=async()=>{const acc=$("acc").value;
-      const {error}=await sb.from("quick_entry_accounts").upsert({quick_entry_id:P.qid,user_id:S.uid,household_id:S.hid,account_id:acc});
+      const {error}=await sb.from("quick_entries").update({default_account_id:acc}).eq("id",P.qid);
       if(error)return $("msg").textContent="Erro: "+error.message;
-      S.qa[P.qid]=acc;P.acc=acc;$("pin").innerHTML="";$("msg").textContent="Conta fixada ✓";};};
+      q0.default_account_id=acc;P.acc=acc;$("pin").innerHTML="";$("msg").textContent="Conta do atalho salva ✓";};};
   $("save").onclick=async()=>{
     const val=num($("v").value);
     if(!(val>0))return $("msg").textContent="Informe um valor válido.";
@@ -326,12 +324,9 @@ function viewAdd(){
     if(r.error){$("save").disabled=false;return $("msg").textContent="Erro: "+r.error.message;}
     let extra="";
     if(mkq){
-      const q=await sb.from("quick_entries").insert({household_id:S.hid,name:qname,kind:S.kind,category_id:cat,
-        default_account_id:S.lastAcc,use_count:1,last_used_at:new Date().toISOString()}).select("id").single();
-      if(q.error)extra=" (o atalho NÃO foi criado: "+q.error.message+")";
-      else{
-        const m=await sb.from("quick_entry_accounts").insert({quick_entry_id:q.data.id,user_id:S.uid,household_id:S.hid,account_id:S.lastAcc});
-        extra=m.error?" (atalho criado, mas sem fixar sua conta: "+m.error.message+")":" · atalho criado ⭐";}
+      const q=await sb.from("quick_entries").insert({household_id:S.hid,user_id:S.uid,name:qname,kind:S.kind,category_id:cat,
+        default_account_id:S.lastAcc,use_count:0}).select("id").single();
+      extra=q.error?" (o atalho NÃO foi criado: "+q.error.message+")":" · atalho criado ⭐";
     }
     if(P.qid)await sb.from("quick_entries").update({use_count:(S.qs.find(x=>x.id===P.qid)?.use_count||0)+1,last_used_at:new Date().toISOString()}).eq("id",P.qid);
     S.pre=null;await Promise.all([loadQs(),loadWallets()]);viewAdd();$("msg").textContent=(run?`Compra em andamento ✓ Parcelas ${from} a ${n} de ${n} geradas`:n?`Parcelado em ${n}x ✓`:"Salvo ✓")+extra;};
@@ -340,20 +335,20 @@ function viewAdd(){
 function viewQs(){
   const an=id=>S.accounts.find(a=>a.id===id)?.name||"—";
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Atalhos</b>
+  <p class="mu" style="margin:6px 0">Estes atalhos são só seus: cada pessoa da família tem os seus. Excluir um atalho não muda nenhum lançamento já feito.</p>
   ${S.qs.length?S.qs.map(q=>`<div class="row" style="display:block">
    <div><b>${esc(q.name)}</b> <span class="mu">${q.kind==="expense"?"despesa":"receita"} · ${esc(catName(q.category_id))} · ${q.use_count}x</span></div>
-   <label>Minha conta neste atalho<select data-acc="${q.id}"><option value="">(padrão geral: ${esc(an(q.default_account_id))})</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.qa[q.id]?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   <label>Conta do atalho<select data-acc="${q.id}"><option value="">(sem conta fixa: usa a última conta usada)</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===q.default_account_id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
    <label>Valor padrão (opcional)<input data-amt="${q.id}" inputmode="decimal" placeholder="0,00" value="${fa(q.default_amount)}"></label>
-   <div style="margin-top:8px"><button data-fav="${q.id}">${q.is_favorite?"⭐ Favorito":"☆ Favoritar"}</button> <button data-arc="${q.id}">Arquivar</button></div></div>`).join(""):'<p class="mu">Nenhum atalho ainda. Na tela Lançar, preencha um lançamento e toque em "Salvar como atalho".</p>'}</div>
+   <div style="margin-top:8px"><button data-fav="${q.id}">${q.is_favorite?"⭐ Favorito":"☆ Favoritar"}</button> <button data-del="${q.id}">Excluir</button></div></div>`).join(""):'<p class="mu">Nenhum atalho ainda. Na tela Lançar, preencha um lançamento e toque em "Salvar como atalho".</p>'}</div>
   <p id="qmsg" class="neg"></p>`;
   const fail=e=>{if(e)$("qmsg").textContent="Erro: "+e.message;return !!e;};
   $("bk").onclick=()=>go("add");
   document.querySelectorAll("[data-acc]").forEach(el=>el.onchange=async()=>{
     const id=el.dataset.acc;
-    const r=el.value?await sb.from("quick_entry_accounts").upsert({quick_entry_id:id,user_id:S.uid,household_id:S.hid,account_id:el.value})
-      :await sb.from("quick_entry_accounts").delete().eq("quick_entry_id",id).eq("user_id",S.uid);
-    if(fail(r.error))return;
-    if(el.value)S.qa[id]=el.value;else delete S.qa[id];});
+    const {error}=await sb.from("quick_entries").update({default_account_id:el.value||null}).eq("id",id);
+    if(fail(error))return;
+    S.qs.find(q=>q.id===id).default_account_id=el.value||null;});
   document.querySelectorAll("[data-amt]").forEach(el=>el.onchange=async()=>{
     const v=num(el.value),id=el.dataset.amt;
     const {error}=await sb.from("quick_entries").update({default_amount:v>0?v:null}).eq("id",id);
@@ -363,10 +358,13 @@ function viewQs(){
     const q=S.qs.find(x=>x.id===b.dataset.fav);
     const {error}=await sb.from("quick_entries").update({is_favorite:!q.is_favorite}).eq("id",q.id);
     if(fail(error))return;await loadQs();viewQs();});
-  document.querySelectorAll("[data-arc]").forEach(b=>b.onclick=async()=>{
-    if(!confirm("Arquivar este atalho? Os lançamentos já feitos não mudam."))return;
-    const {error}=await sb.from("quick_entries").update({is_active:false}).eq("id",b.dataset.arc);
-    if(fail(error))return;await loadQs();viewQs();});
+  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
+    const q=S.qs.find(x=>x.id===b.dataset.del);
+    if(!confirm(`Excluir o atalho "${q.name}"? Isso não pode ser desfeito. Os lançamentos já feitos não mudam.`))return;
+    const {data,error}=await sb.from("quick_entries").delete().eq("id",q.id).select("id");
+    if(fail(error))return;
+    if(!data||!data.length)return $("qmsg").textContent="Não consegui excluir este atalho (talvez ele já tenha sido excluído).";
+    await loadQs();viewQs();});
 }
 
 function viewTr(){
@@ -1201,11 +1199,11 @@ function viewCatEdit(){
     S.cmsg=`"${c.name}" arquivada ✓`;go("cat");};
   $("cdel").onclick=async()=>{
     if(filhas.length)return say(`Tem ${filhas.length} subcategoria(s) (inclusive arquivadas). Apague-as antes, ou arquive esta categoria.`);
-    const [t,b,q]=await Promise.all([cnt("transactions","category_id"),cnt("budgets","category_id"),cnt("quick_entries","category_id")]);
+    const [t,b,q]=await Promise.all([cnt("transactions","category_id"),cnt("budgets","category_id"),sb.rpc("count_quick_entries_by_category",{p_category_id:c.id}).then(r=>r.error?null:(r.data||0))]);
     if(t==null||b==null||q==null)return say("Não consegui verificar o uso da categoria. Tente de novo.");
     if(t)return say(`Tem ${t} lançamento(s). Arquive em vez de apagar.`);
     if(b)return say(`Tem ${b} meta(s) ligada(s). Apague as metas ou arquive a categoria.`);
-    if(q)return say(`É usada em ${q} atalho(s). Arquive em vez de apagar.`);
+    if(q)return say(`É usada em ${q} atalho(s) da família (seus ou de outra pessoa). Exclua ou ajuste esses atalhos, ou arquive a categoria.`);
     if(!confirm(`Apagar "${c.name}" de vez? Isso não pode ser desfeito.`))return;
     const {error}=await sb.from("categories").delete().eq("id",c.id);
     if(error)return say("Erro: "+error.message);
