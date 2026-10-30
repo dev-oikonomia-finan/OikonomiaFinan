@@ -24,7 +24,7 @@ async function viewAcc(){
    <label>Cartão: dia de fechamento<input id="acl" type="number" min="1" max="31"></label>
    <label>Cartão: dia de vencimento<input id="adu" type="number" min="1" max="31"></label>
    <button class="pri" id="ads">Adicionar</button><p id="amsg" class="neg"></p></div>
-  <div class="card"><button class="sec" id="gcl" style="margin-top:0">🔒 Fechamento mensal</button><button class="sec" id="gc">🏷 Gerenciar categorias</button><button class="sec" id="gi">📈 Investimentos</button><button class="sec" id="gx">🌎 Internacional</button><button class="sec" id="gv">📖 Versículos</button></div>
+  <div class="card"><button class="sec" id="gcl" style="margin-top:0">🔒 Fechamento mensal</button><button class="sec" id="gc">🏷 Gerenciar categorias</button><button class="sec" id="gi">📈 Investimentos</button><button class="sec" id="gx">🌎 Internacional</button><button class="sec" id="gtr">✈️ Viagens e passeios</button><button class="sec" id="gv">📖 Versículos</button></div>
   ${(ina||[]).length?`<div class="card"><details><summary>Contas inativas (${ina.length})</summary>${ina.map(a=>`<div class="row"><span>${esc(a.name)}</span><button class="x" data-ra="${a.id}">Reativar</button></div>`).join("")}</details></div>`:""}
   <div class="card mu">Código de convite da família: <b>${esc(h?.invite_code)}</b><br><br><button id="out">Sair</button></div>`;
   $("ads").onclick=async()=>{
@@ -36,7 +36,7 @@ async function viewAcc(){
     if(error)return $("amsg").textContent=error.message.includes("accounts_group_uq")?"Já existe, neste grupo, uma conta ativa nesta moeda.":error.message;
     if(card){const r=await sb.from("credit_cards").insert({household_id:S.hid,account_id:na.id,closing_day:cl,due_day:du});if(r.error)return $("amsg").textContent="Conta criada, mas o cartão não: "+r.error.message;await sb.from("card_holders").insert({household_id:S.hid,account_id:na.id,name:"Titular"});}
     await loadRef();viewAcc();};
-  $("gc").onclick=()=>{S.catFrom="acc";go("cat");};$("gv").onclick=()=>go("ver");$("gx").onclick=()=>go("intl");$("gi").onclick=()=>{S.im="";go("inv");};
+  $("gc").onclick=()=>{S.catFrom="acc";go("cat");};$("gv").onclick=()=>go("ver");$("gx").onclick=()=>go("intl");$("gtr").onclick=()=>go("trips");$("gi").onclick=()=>{S.im="";go("inv");};
   document.querySelectorAll("[data-cr]").forEach(b=>b.onclick=()=>{const w=S.wallets.find(x=>x.id===b.dataset.cr);
     S.kind="income";S.pre={acc:w.account_id,wal:w.id,amt:w.expected_amount,desc:"Crédito "+w.name,cat:lsGet("walcat_"+w.id)||null};go("add");});
   document.querySelectorAll("[data-mg]").forEach(b=>b.onclick=()=>{S.acmId=b.dataset.mg;go("acm");});
@@ -54,11 +54,14 @@ const dper=()=>{const t=today(),y=+t.slice(0,4),m0=t.slice(0,8)+"01";
   return [m0,mAdd(m0,1)];};
 
 async function viewEdit(){
+  const back=S.edBack||"list";S.edBack=null;
   const {data:t,error}=await sb.from("transactions")
-    .select("id,account_id,statement_month,card_holder_id,wallet_id,date,amount,currency,description,category_id,status,transfer_group_id,installment_group_id,installment_number,installment_total,fx_input,original_amount,original_currency,accounts(name)")
+    .select("id,account_id,statement_month,card_holder_id,wallet_id,date,amount,currency,description,category_id,status,transfer_group_id,installment_group_id,installment_number,installment_total,fx_input,original_amount,original_currency,trip_id,accounts(name)")
     .eq("id",S.ed).single();
   if(error||!t){alert("Lançamento não encontrado.");return go("list");}
-  drawEdit(t,{kind:t.amount<0?"expense":"income",val:f2(t.amount),date:t.date,cat:t.category_id||"",acc:t.account_id,desc:t.description||"",hold:t.card_holder_id||"",wal:t.wallet_id||"",all:false,oa:t.original_amount==null?"":f2(t.original_amount),oc:(t.original_currency||"").trim(),fi:t.fx_input==null?"":String(Number(t.fx_input)).replace(".",",")});
+  t._back=back;
+  const D={kind:t.amount<0?"expense":"income",val:f2(t.amount),date:t.date,cat:t.category_id||"",acc:t.account_id,desc:t.description||"",hold:t.card_holder_id||"",wal:t.wallet_id||"",all:false,oa:t.original_amount==null?"":f2(t.original_amount),oc:(t.original_currency||"").trim(),fi:t.fx_input==null?"":String(Number(t.fx_input)).replace(".",","),trip:t.trip_id||""};
+  t._d0={...D};drawEdit(t,D);
 }
 function drawEdit(t,D){
   const tr=!!t.transfer_group_id,pa=!!t.installment_group_id,cur=t.currency.trim(),lo=pa?S.loans.find(l=>l.installment_group_id===t.installment_group_id):null;
@@ -82,15 +85,16 @@ function drawEdit(t,D){
    ${!tr&&ben?`<label>Carteira<select id="ew">${S.wallets.filter(w=>w.account_id===t.account_id&&(w.is_active||w.id===D.wal)).map(w=>`<option value="${w.id}" ${w.id===D.wal?"selected":""}>${esc(w.name)}${w.is_active?"":" (inativa)"}</option>`).join("")}</select></label>`:""}
    <label>Descrição<input id="edsc" value="${esc(D.desc)}"></label>
    <label>Data<input id="edt" type="date" value="${esc(D.date)}"></label>
+   ${!tr&&!lo&&((S.trips||[]).length||D.trip)?`<label>Viagem ou passeio${pa?" (vale para todas as parcelas)":""}<select id="etp">${tripOpts(D.trip)}</select></label>`:""}
    ${manFat?`<label class="ck" id="efw" ${D.date===t.date?"hidden":""}><input type="checkbox" id="efat" ${D.keepFat===false?"":"checked"}> Manter a fatura de ${esc(mlab(t.statement_month))} (ajustada à mão)</label>`:""}
    ${lo?`<label class="ck"><input type="checkbox" id="efol" ${D.fol?"checked":""}> Se trocar a conta, aplicar também às parcelas seguintes ainda previstas</label>`:""}
    ${pa?`<label class="ck"><input type="checkbox" id="eall" ${D.all?"checked":""}> Aplicar categoria e descrição a todas as parcelas ${lo?"do contrato":"desta compra"}</label>
      <button class="lk" id="epar">Editar todas as parcelas ${lo?"do contrato":"desta compra"}</button>`:""}
    <button class="pri" id="es">Salvar alterações</button><p id="emsg" class="neg"></p></div>`;
-  const grab=()=>{D.val=$("ev").value;D.date=$("edt").value;D.desc=$("edsc").value;if($("eh"))D.hold=$("eh").value;if($("ew"))D.wal=$("ew").value;
+  const grab=()=>{if($("etp"))D.trip=$("etp").value;D.val=$("ev").value;D.date=$("edt").value;D.desc=$("edsc").value;if($("eh"))D.hold=$("eh").value;if($("ew"))D.wal=$("ew").value;
     if($("ec"))D.cat=$("ec").value;if($("ea"))D.acc=$("ea").value;if($("eall"))D.all=$("eall").checked;if($("efol"))D.fol=$("efol").checked;if($("efat"))D.keepFat=$("efat").checked;if($("eoa"))D.oa=$("eoa").value;if($("eoc"))D.oc=$("eoc").value;if($("efi"))D.fi=$("efi").value;};
   if($("efat"))$("edt").oninput=()=>{$("efw").hidden=$("edt").value===t.date;};
-  $("bk").onclick=()=>go("list");
+  $("bk").onclick=()=>go(t._back);
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{grab();D.kind=b.dataset.k;D.cat="";drawEdit(t,D);});
   if($("epar"))$("epar").onclick=()=>{S.par=t.installment_group_id;S.parFrom="list";go("par");};
   $("es").onclick=async()=>{
@@ -101,6 +105,8 @@ function drawEdit(t,D){
     if(($("eoa")||$("eoc"))&&(oaV!==null||ocV)&&!(oaV>0&&ocV&&/^[A-Z]{3}$/.test(ocV)))return $("emsg").textContent="Valor original: informe o valor e a moeda com 3 letras (ex.: EUR).";
     if(fiV!==null&&!(fiV>0))return $("emsg").textContent="A taxa deve ser maior que zero.";
     const st=date>today()?"planned":"posted",desc=$("edsc").value.trim()||null;
+    grab();const tripNew=$("etp")?($("etp").value||null):undefined,tripCh=tripNew!==undefined&&(tripNew||"")!==(t.trip_id||""),
+      onlyTrip=tripCh&&!tr&&["kind","val","date","cat","acc","desc","hold","wal","oa","oc","fi"].every(k=>String(D[k]??"")===String(t._d0[k]??""));
     $("es").disabled=true;
     let r;
     if(tr)r=await sb.from("transactions").update({date,description:desc,status:st}).eq("transfer_group_id",t.transfer_group_id);
@@ -109,10 +115,12 @@ function drawEdit(t,D){
       if(fgn){if($("eoa")){u.original_amount=oaV;u.original_currency=oaV!==null?ocV:null;if(t.fx_input!=null)u.fx_input=null;}
         else{const was=t.fx_input==null?null:Number(t.fx_input);if(fiV!==was)u.fx_input=fiV;if(t.original_amount!=null){u.original_amount=null;u.original_currency=null;}}}
       if(!pa)u.account_id=$("ea").value;if($("eh")&&$("ea").value===t.account_id)u.card_holder_id=$("eh").value;if($("ew"))u.wallet_id=$("ew").value;
-      r=await sb.from("transactions").update(u).eq("id",t.id);
-      if(!r.error&&pa&&$("eall").checked)
+      if(onlyTrip)r=await tripSet(t,tripNew);
+      else{r=await sb.from("transactions").update(u).eq("id",t.id);
+        if(!r.error&&tripCh)r=await tripSet(t,tripNew);}
+      if(!r.error&&!onlyTrip&&pa&&$("eall").checked)
         r=await sb.from("transactions").update({category_id:u.category_id,description:desc}).eq("installment_group_id",t.installment_group_id);
-      if(!r.error&&pa&&$("eh"))r=await sb.from("transactions").update({card_holder_id:$("eh").value}).eq("installment_group_id",t.installment_group_id);
+      if(!r.error&&!onlyTrip&&pa&&$("eh"))r=await sb.from("transactions").update({card_holder_id:$("eh").value}).eq("installment_group_id",t.installment_group_id);
       if(!r.error&&lo&&$("ea").value!==t.account_id)
         r=await sb.rpc("change_loan_account",{p_contract_id:lo.id,p_installment_number:t.installment_number,p_account_id:$("ea").value,p_following:$("efol").checked,p_set_default:false});
     }
@@ -120,7 +128,7 @@ function drawEdit(t,D){
     if(manFat&&$("efat")&&$("efat").checked&&date!==t.date&&$("ea").value===t.account_id){
       const r2=await sb.from("transactions").update({statement_month:t.statement_month}).eq("id",t.id);
       if(r2.error){$("es").disabled=false;return $("emsg").textContent="A data foi salva, mas não consegui manter a fatura de "+mlab(t.statement_month)+": "+r2.error.message+" Ajuste pelas setas na tela Fatura.";}}
-    S.ed=null;go("list");};
+    S.ed=null;go(t._back);};
 }
 
 async function viewPar(msg){

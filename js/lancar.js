@@ -20,7 +20,8 @@ function viewAdd(){
    <label>Conta / cartão<select id="acc">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===accSel?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
    <label id="hw" hidden>Portador<select id="hd"></select></label><label id="ww" hidden>Carteira<select id="wl"></select></label><p id="wm" class="mu"></p><div id="pin"></div>
    <label>Descrição<input id="desc" value="${esc(P.desc||"")}"></label>
-   <label>Data<input id="dt" type="date" value="${esc(P.dt||today())}"></label><p id="fh" class="mu"></p>
+   <label>Data<input id="dt" type="date" value="${esc(P.dt||today())}"></label><p id="fh" class="mu"></p>${(S.trips||[]).length?`
+   <label>Viagem ou passeio (opcional)<select id="tp">${tripOpts(P.trip!==undefined?P.trip:tripDefault(P.dt||today()))}</select></label><p id="tpn" class="mu"></p>`:""}
    ${P.qid?"":'<label class="ck"><input type="checkbox" id="fl"> ⭐ Salvar também como atalho</label>'}
    <button class="pri" id="save">Salvar</button><p id="msg" class="mu"></p></div>`;
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{
@@ -41,13 +42,14 @@ function viewAdd(){
     const q=S.qs.find(x=>x.id===b.dataset.q);
     if(P.qid===q.id){
       const d=$("desc").value;
-      S.pre={cat:$("cat").value,acc:$("acc").value,amt:$("v").value,desc:d.trim()===q.name?"":d,dt:$("dt").value,wal:$("wl").value};
+      S.pre={cat:$("cat").value,acc:$("acc").value,amt:$("v").value,desc:d.trim()===q.name?"":d,dt:$("dt").value,wal:$("wl").value,trip:$("tp")?$("tp").value:undefined};
       viewAdd();$("desc").focus();return;}
     const ok=id=>S.accounts.some(a=>a.id===id)?id:null;
-    S.pre={qid:q.id,cat:q.category_id,acc:ok(q.default_account_id)||S.lastAcc,desc:q.name,amt:q.default_amount};
+    S.pre={qid:q.id,cat:q.category_id,acc:ok(q.default_account_id)||S.lastAcc,desc:q.name,amt:q.default_amount,trip:$("tp")?$("tp").value:undefined};
     viewAdd();$("v").focus();});
   const fh=()=>{const c=S.cards.find(x=>x.account_id===$("acc").value),d=$("dt").value;$("fh").textContent=c&&d?"Entra na fatura de "+mlab(stm(c,d)):"";};
   $("dt").oninput=fh;fh();
+  if($("tp"))tripWire($("dt"),$("tp"),$("tpn"),P.trip!==undefined);
   const hd=()=>{const L=holdersOf($("acc").value);$("hw").hidden=L.length<2;let sv=null;try{sv=localStorage.getItem("hold_"+$("acc").value)}catch(e){}
     $("hd").innerHTML=L.map(h=>`<option value="${h.id}" ${h.id===sv?"selected":""}>${esc(h.name)}</option>`).join("");};hd();
   const wv=()=>{const a=S.accounts.find(x=>x.id===$("acc").value);
@@ -106,7 +108,7 @@ function viewAdd(){
     S.lastAcc=$("acc").value;
     const hl=holdersOf(S.lastAcc),hv=hl.length>1?$("hd").value:(hl[0]?hl[0].id:null);
     if(hl.length>1){try{localStorage.setItem("hold_"+S.lastAcc,hv)}catch(e){}}
-    const cat=$("cat").value||null,dt=$("dt").value;
+    const cat=$("cat").value||null,dt=$("dt").value,tv=$("tp")&&$("tp").value?$("tp").value:null;
     const accO=S.accounts.find(a=>a.id===S.lastAcc),isBen=!!accO&&accO.type==="benefit",wid=isBen?($("wl").value||null):null;
     const oaV=$("oa")&&$("oa").value.trim()?num($("oa").value):null,ocV=$("oc")&&$("oc").value.trim()?$("oc").value.trim().toUpperCase():null,fiV=$("fi")&&$("fi").value.trim()?num($("fi").value):null;
     if((oaV!==null||ocV)&&!(oaV>0&&ocV&&/^[A-Z]{3}$/.test(ocV)))return $("msg").textContent="Valor original: informe o valor e a moeda com 3 letras (ex.: EUR).";
@@ -118,15 +120,16 @@ function viewAdd(){
     if(run){const gid=uid4(),vv=Math.round(val*100)/100;
       for(let i=from;i<=n;i++){const d=dAdd(dt,i-pa);
         rows.push({account_id:S.lastAcc,date:d,amount:-vv,category_id:cat,description:$("desc").value||null,status:d>today()?"planned":"posted",
-          installment_group_id:gid,installment_number:i,installment_total:n,card_holder_id:hv});}}
+          installment_group_id:gid,installment_number:i,installment_total:n,card_holder_id:hv,trip_id:tv});}}
     const r=run?await sb.from("transactions").insert(rows)
       :n?await sb.rpc("create_installments",{p_account_id:S.lastAcc,p_first_date:dt,p_total:val,p_n:n,
         p_category_id:cat,p_description:$("desc").value||null,p_card_holder_id:hv})
       :await sb.from("transactions").insert({account_id:S.lastAcc,date:dt,
         amount:S.kind==="expense"?-val:val,category_id:cat,description:$("desc").value||null,
-        status:dt>today()?"planned":"posted",card_holder_id:hv,wallet_id:wid,original_amount:oaV,original_currency:oaV!==null?ocV:null,fx_input:fiV});
+        status:dt>today()?"planned":"posted",card_holder_id:hv,wallet_id:wid,original_amount:oaV,original_currency:oaV!==null?ocV:null,fx_input:fiV,trip_id:tv});
     if(r.error){$("save").disabled=false;return $("msg").textContent="Erro: "+r.error.message;}
     let extra="";
+    if(tv&&n&&!run&&r.data){const u=await sb.from("transactions").update({trip_id:tv}).eq("installment_group_id",r.data);if(u.error)extra+=" (a viagem NÃO foi vinculada: "+u.error.message+")";}
     if(mkq){
       const q=await sb.from("quick_entries").insert({household_id:S.hid,user_id:S.uid,name:qname,kind:S.kind,category_id:cat,
         default_account_id:S.lastAcc,use_count:0}).select("id").single();
