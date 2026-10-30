@@ -173,10 +173,10 @@ $("jn").onclick=()=>onb("join_household",{p_code:$("cd").value.trim(),p_display_
 $("hb").onclick=()=>go("fam");
 
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{if(b.dataset.t==="list")S.lim=50;go(b.dataset.t);});
-const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc",fat:"acc",clo:"acc",acm:"acc",ver:"acc",inv:"acc",intl:"acc",ir:"acc"})[t]||t;
+const NAVOF=t=>({qs:"add",ed:"list",par:S.parFrom==="loans"?"dash":"list",loans:"dash",ant:"dash",metas:"dash",cat:S.catFrom==="metas"?"dash":"acc",cated:S.catFrom==="metas"?"dash":"acc",tr:S.trFrom==="add"?"add":"acc",fat:"acc",clo:"acc",acm:"acc",ver:"acc",inv:"acc",intl:"acc",ir:"acc",rent:"acc"})[t]||t;
 function go(t){S.tab=t;
   document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===NAVOF(t)));
-  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas,fat:viewFat,clo:viewClo,acm:viewAcm,ver:viewVer,inv:viewInv,intl:viewIntl,ir:viewIr})[t]();}
+  ({dash:viewDash,add:viewAdd,list:viewList,acc:viewAcc,fam:viewFam,qs:viewQs,tr:viewTr,ed:viewEdit,par:viewPar,loans:viewLoans,ant:viewAnt,cat:viewCat,cated:viewCatEdit,metas:viewMetas,fat:viewFat,clo:viewClo,acm:viewAcm,ver:viewVer,inv:viewInv,intl:viewIntl,ir:viewIr,rent:viewRent})[t]();}
 
 function viewFam(){
   $("main").innerHTML=`<div class="card"><b>Minhas famílias</b>${S.hs.map(h=>`<div class="row"><div>${esc(h.name)}${h.id===S.hid?' <span class="mu">(atual)</span>':""}</div>${h.id===S.hid?"":`<button data-sw="${h.id}">Trocar</button>`}</div>`).join("")}</div>
@@ -1697,6 +1697,91 @@ async function viewIr(){
     if(error){alert("Erro: "+error.message);return;}
     viewIr();});
 }
+async function viewRent(){
+  const hid=S.hid,td=today(),cy=Number(td.slice(0,4)),
+    pg=async mk=>{const o=[];for(let i=0;;i+=1000){const r=await mk().range(i,i+999);if(r.error)return{error:r.error,data:o};o.push(...r.data);if(r.data.length<1000)break;}return{data:o};};
+  const [ast,ops,inc,snp,pos]=await Promise.all([
+    pg(()=>sb.from("investment_assets").select("id,account_id,class,price_mode,ticker,name,is_active").eq("household_id",hid).order("name").order("id")),
+    pg(()=>sb.from("investment_operations").select("id,asset_id,date,side,amount,fees,qty_after,cost_after,created_at").eq("household_id",hid).order("date").order("created_at").order("id")),
+    pg(()=>sb.from("investment_income").select("id,asset_id,date,net").eq("household_id",hid).order("date").order("id")),
+    pg(()=>sb.from("investment_snapshots").select("asset_id,date,value").order("date").order("asset_id")),
+    sb.from("investment_positions").select("asset_id,qty,current_value,last_value,last_date").eq("household_id",hid)]);
+  if(S.tab!=="rent")return;
+  const er=[ast,ops,inc,snp,pos].find(r=>r.error);
+  if(er){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button><p class="neg">${esc(er.error.message||String(er.error))}</p></div>`;$("bk").onclick=()=>{S.im="";go("inv");};return;}
+  const A=S.accounts.filter(a=>a.type==="investment"),ok=id=>A.some(a=>a.id===id),
+    AL=ast.data.filter(a=>ok(a.account_id)),AM={},OB={},IB={},SB={},PV={};
+  AL.forEach(a=>{AM[a.id]=a;});
+  ops.data.forEach(o=>{if(AM[o.asset_id])(OB[o.asset_id]=OB[o.asset_id]||[]).push(o);});
+  inc.data.forEach(i=>{if(AM[i.asset_id])(IB[i.asset_id]=IB[i.asset_id]||[]).push(i);});
+  snp.data.forEach(s=>{if(AM[s.asset_id])(SB[s.asset_id]=SB[s.asset_id]||[]).push(s);});
+  (pos.data||[]).forEach(p=>{PV[p.asset_id]=p;});
+  const posAt=(id,d)=>{let r=null;(OB[id]||[]).forEach(o=>{if(o.date<=d)r=o;});return r?{q:Number(r.qty_after||0),c:Number(r.cost_after||0)}:{q:0,c:0};},
+    snapAt=(id,d)=>{let r=null;(SB[id]||[]).forEach(s=>{if(s.date<=d)r=s;});return r;},
+    valAt=(a,d)=>{const p=posAt(a.id,d);if(!(p.q>0||p.c>0))return{v:0,s:null};
+      const s=snapAt(a.id,d),v=s?(a.price_mode==="quote"?p.q*Number(s.value):Number(s.value)):p.c;return{v:r2(v),s:s?s.date:null};},
+    valNow=a=>{const w=PV[a.id];if(w&&w.current_value!=null)return{v:Number(w.current_value)||0,s:w.last_value!=null?w.last_date:null};return valAt(a,td);};
+  const fy=ops.data.length?Number(ops.data[0].date.slice(0,4)):cy,yrs=[];
+  for(let y=cy;y>=Math.min(fy,cy-6);y--)yrs.push(y);
+  const key=String(S.rpd||"all");
+  let D0=null,D1=td,lab="Desde o início";
+  if(key==="12m"){D0=(cy-1)+td.slice(4);lab="Últimos 12 meses";}
+  else if(/^\d{4}$/.test(key)){const y=Math.min(cy,Number(key));D0=(y-1)+"-12-31";D1=y===cy?td:y+"-12-31";lab=y===cy?y+" (até hoje)":String(y);}
+  const calc=a=>{
+    const g={inv:0,rec:0,fim:0,fl:[],snap:null,sem:false},v0=D0?valAt(a,D0):{v:0};
+    if(v0.v>0){g.inv+=v0.v;g.fl.push({d:D0,v:-v0.v});}
+    (OB[a.id]||[]).forEach(o=>{if((D0&&o.date<=D0)||o.date>D1)return;
+      const am=Number(o.amount),fe=Number(o.fees||0);
+      if(o.side==="buy"){g.inv+=am+fe;g.fl.push({d:o.date,v:-(am+fe)});}else{g.rec+=am-fe;g.fl.push({d:o.date,v:am-fe});}});
+    (IB[a.id]||[]).forEach(i=>{if((D0&&i.date<=D0)||i.date>D1)return;const n=Number(i.net);g.rec+=n;g.fl.push({d:i.date,v:n});});
+    const v1=D1===td?valNow(a):valAt(a,D1);
+    g.fim=v1.v;g.snap=v1.s;g.sem=v1.v>0&&!v1.s;
+    if(v1.v>0)g.fl.push({d:D1,v:v1.v});
+    g.ganho=g.fim+g.rec-g.inv;return g;};
+  const xirr=flows=>{
+    if(!flows.some(f=>f.v<0)||!flows.some(f=>f.v>0))return null;
+    const ms=d=>Date.parse(d+"T00:00:00Z"),t0=Math.min(...flows.map(f=>ms(f.d))),
+      T=flows.map(f=>({t:(ms(f.d)-t0)/864e5/365,v:f.v})),span=Math.max(...T.map(x=>x.t))*365;
+    if(span<360)return{short:true};
+    const F=r=>T.reduce((s,x)=>s+x.v/Math.pow(1+r,x.t),0);
+    let lo=-0.99,hi=10,flo=F(lo),fhi=F(hi);
+    if(!isFinite(flo)||!isFinite(fhi)||flo*fhi>0)return null;
+    for(let i=0;i<200;i++){const m=(lo+hi)/2,fm=F(m);if(flo*fm<=0){hi=m;fhi=fm;}else{lo=m;flo=fm;}}
+    return{r:(lo+hi)/2};};
+  const pc=v=>v==null?"—":(v=Math.abs(v)<5e-5?0:v,v>=0?"+":"")+(v*100).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%",
+    ann=g=>{const x=xirr(g.fl);return !x||x.short?"—":pc(x.r)+" a.a.";},
+    pct=g=>g.inv>0?g.ganho/g.inv:null,
+    cls=g=>g.ganho<0?"neg":"pos",
+    sum=(a,b)=>({inv:a.inv+b.inv,rec:a.rec+b.rec,fim:a.fim+b.fim,fl:a.fl.concat(b.fl),sem:a.sem||b.sem,ganho:a.ganho+b.ganho}),
+    zero=()=>({inv:0,rec:0,fim:0,fl:[],sem:false,ganho:0});
+  const R=AL.map(a=>({a,g:calc(a)})).filter(x=>x.g.inv>0||x.g.rec>0||x.g.fim>0),
+    TOT=R.reduce((t,x)=>sum(t,x.g),zero()),CL={};
+  R.forEach(x=>{CL[x.a.class]=sum(CL[x.a.class]||zero(),x.g);});
+  const L1=fdt(D1),
+    det=g=>`<div class="mu">Investido ${mm(g.inv)} · recebido ${mm(g.rec)} · valor em ${L1} ${mm(g.fim)}</div>
+      <div class="mu">Ganho ${pc(pct(g))} · taxa anualizada ${ann(g)}</div>`,
+    head=(t,g,s)=>`<div style="display:flex;justify-content:space-between;gap:8px"><b>${t}</b><b class="${cls(g)}">${mm(g.ganho)}</b></div>${s?`<div class="mu">${s}</div>`:""}`;
+  $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Rentabilidade</b>
+    <label>Período<select id="rpd"><option value="all">Desde o início</option><option value="12m">Últimos 12 meses</option>${yrs.map(y=>`<option value="${y}">${y===cy?y+" (até hoje)":y}</option>`).join("")}</select></label>
+    <p class="mu">${lab}: ${D0?"do fim de "+fdt(D0):"do primeiro lançamento"} até ${L1}. Ganho = valor no fim + recebido − investido.</p></div>
+    ${R.length?`<div class="card"><b>Total da carteira</b>
+      <div class="row" style="display:block">${head("Ganho no período",TOT)}${det(TOT)}</div>
+      ${TOT.sem?'<p class="mu neg">Há ativos sem cotação ou valor atualizado: eles entram pelo custo e só refletem os rendimentos pagos.</p>':""}</div>
+    <div class="card"><b>Por classe</b>${Object.keys(ICLS).filter(k=>CL[k]).map(k=>`<div class="row" style="display:block">${head(ICLS[k],CL[k])}${det(CL[k])}</div>`).join("")}</div>
+    <div class="card"><b>Por ativo</b>${R.map(x=>{const a=x.a,g=x.g;
+      return `<div class="row" style="display:block">${head(esc(a.ticker||a.name),g,(a.ticker?esc(a.name)+" · ":"")+ICLS[a.class]+(a.is_active?"":" · inativo")+(g.sem?' · <span class="neg">sem cotação (usa o custo)</span>':g.snap&&g.fim>0?" · cotação de "+fdt(g.snap):""))}${det(g)}</div>`;}).join("")}</div>`
+    :`<div class="card"><p class="mu">Nenhuma operação, rendimento ou posição de ativos nesse período.</p></div>`}
+    <div class="card"><b>Como ler</b>
+      <p class="mu">Investido: compras mais taxas e, quando o período não começa no início, o valor que a posição já tinha no começo (última cotação até aquela data, ou o custo). Reaplicações contam de novo.</p>
+      <p class="mu">Recebido: vendas e resgates líquidos de taxas (o IR retido já está fora do valor) e rendimentos líquidos.</p>
+      <p class="mu">Valor no fim: quantidade × cotação, ou o valor atualizado informado; sem cotação, usa o custo.</p>
+      <p class="mu">Taxa anualizada: usa a data de cada fluxo e só aparece com 1 ano ou mais de período.</p>
+      <p class="mu">O ganho não considera imposto a pagar na declaração nem ganho de capital de ações, e só é tão completo quanto os lançamentos antigos.</p></div>`;
+  $("rpd").value=key;
+  $("bk").onclick=()=>{S.im="";go("inv");};
+  $("rpd").onchange=()=>{S.rpd=$("rpd").value;viewRent();};
+}
+
 async function viewInv(){
   const hid=S.hid,y0=today().slice(0,4)+"-01-01",[sm,po,op,ri,ry,ast]=await Promise.all([
     sb.from("investment_account_summary").select("*").eq("household_id",hid),
@@ -1768,7 +1853,7 @@ async function viewInv(){
     <div class="row"><span class="mu">Rendimentos no ano (líquido)</span><span class="pos">${mm((ry.data||[]).reduce((r,x)=>r+Number(x.net),0))}</span></div>
     ${Object.keys(cls).map(k=>`<div class="row" style="padding-left:14px"><span class="mu">${ICLS[k]}</span><span>${mm(cls[k])}</span></div>`).join("")}`
     :'<p class="mu">Crie em Contas uma conta do tipo Investimento (em reais) e transfira dinheiro para ela. Cada aporte é uma transferência.</p>'}</div>
-  ${A.length&&!m?`<div class="card"><button class="sec" id="nb" style="margin-top:0">+ Ativo</button><button class="sec" id="no" ${P.length?"":"disabled"}>+ Operação (compra ou venda)</button><button class="sec" id="nq" ${H.length?"":"disabled"}>Atualizar cotações</button><button class="sec" id="nr" ${P.length?"":"disabled"}>+ Rendimento</button><button class="sec" id="nir">Relatório de IR</button></div>`:""}
+  ${A.length&&!m?`<div class="card"><button class="sec" id="nb" style="margin-top:0">+ Ativo</button><button class="sec" id="no" ${P.length?"":"disabled"}>+ Operação (compra ou venda)</button><button class="sec" id="nq" ${H.length?"":"disabled"}>Atualizar cotações</button><button class="sec" id="nr" ${P.length?"":"disabled"}>+ Rendimento</button><button class="sec" id="nir">Relatório de IR</button><button class="sec" id="nrt">Rentabilidade</button></div>`:""}
   ${form}
   ${H.length?`<div class="card"><b>Posições</b>${H.map(p=>{const q=p.price_mode==="quote",res=Number(p.current_value)-Number(p.cost);
     return `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(p.ticker||p.name)}</b><b>${mm(p.current_value)}</b></div>
@@ -1786,6 +1871,7 @@ async function viewInv(){
   if($("nq"))$("nq").onclick=()=>{S.im="quo";viewInv();};
   if($("nr"))$("nr").onclick=()=>{S.im="inc";viewInv();};
   if($("nir"))$("nir").onclick=()=>go("ir");
+  if($("nrt"))$("nrt").onclick=()=>go("rent");
   ["icx","ocx","qcx","rcx","iec"].forEach(i=>{if($(i))$(i).onclick=rl;});
   if($("ic"))$("ic").onchange=()=>{$("ip").value=["acoes","fiis","cripto"].includes($("ic").value)?"quote":"total";};
   if($("ic"))$("ic").onchange();
