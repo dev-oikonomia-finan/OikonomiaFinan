@@ -144,13 +144,29 @@ function viewQs(){
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Atalhos</b>
   <p class="mu" style="margin:6px 0">Estes atalhos são só seus: cada pessoa da família tem os seus. Excluir um atalho não muda nenhum lançamento já feito.</p>
   ${S.qs.length?S.qs.map(q=>`<div class="row" style="display:block">
-   <div><b>${esc(q.name)}</b> <span class="mu">${q.kind==="expense"?"despesa":"receita"} · ${esc(catName(q.category_id))} · ${q.use_count}x</span></div>
+   <div><b>${esc(q.name)}</b> <span class="mu">${q.kind==="expense"?"despesa":"receita"} · ${esc(catName(q.category_id))} · ${q.use_count}x${q.recurrence?" · 📌 "+(q.recurrence==="monthly"?"mensal, dia "+q.due_day:"anual, "+q.due_day+"/"+MESES[q.due_month-1]+(q.installments?" em "+q.installments+"x":"")):""}</span></div>
    <label>Conta do atalho<select data-acc="${q.id}"><option value="">(sem conta fixa: usa a última conta usada)</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===q.default_account_id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
    <label>Valor padrão (opcional)<input data-amt="${q.id}" inputmode="decimal" placeholder="0,00" value="${fa(q.default_amount)}"></label>
+   <label>Conta fixa (aparece no Lançar em lote)<select data-xr="${q.id}"><option value="">Não</option><option value="monthly" ${q.recurrence==="monthly"?"selected":""}>Mensal</option><option value="yearly" ${q.recurrence==="yearly"?"selected":""}>Anual</option></select></label>
+   <div data-xw="${q.id}" style="display:${q.recurrence?"flex":"none"};gap:8px"><label style="flex:1">Dia do vencimento<input data-xd="${q.id}" type="number" min="1" max="31" inputmode="numeric" value="${q.due_day||""}"></label>
+    <label style="flex:1;${q.recurrence==="yearly"?"":"display:none"}" data-xmw="${q.id}">Mês<select data-xm="${q.id}">${MESES.map((m,i)=>`<option value="${i+1}" ${q.due_month===i+1?"selected":""}>${m[0].toUpperCase()+m.slice(1)}</option>`).join("")}</select></label>
+    <label style="flex:1;${q.recurrence==="yearly"?"":"display:none"}" data-xiw="${q.id}">Parcelas padrão<input data-xi="${q.id}" type="number" min="2" max="48" inputmode="numeric" placeholder="à vista" value="${q.installments||""}"></label></div>
+   <button class="x" data-xs="${q.id}">Salvar conta fixa</button>
    <div style="margin-top:8px"><button data-fav="${q.id}">${q.is_favorite?"⭐ Favorito":"☆ Favoritar"}</button> <button data-del="${q.id}">Excluir</button></div></div>`).join(""):'<p class="mu">Nenhum atalho ainda. Na tela Lançar, preencha um lançamento e toque em "Salvar como atalho".</p>'}</div>
   <p id="qmsg" class="neg"></p>`;
   const fail=e=>{if(e)$("qmsg").textContent="Erro: "+e.message;return !!e;};
   $("bk").onclick=()=>go("add");
+  /* conta fixa: mensal (dia) ou anual (dia, mês e parcelas padrão); a regra quick_entries_recur_chk confere no banco */
+  const xq=(a,id)=>document.querySelector(`[data-${a}="${id}"]`);
+  document.querySelectorAll("[data-xr]").forEach(el=>el.onchange=()=>{const id=el.dataset.xr,v=el.value;
+    xq("xw",id).style.display=v?"flex":"none";xq("xmw",id).style.display=v==="yearly"?"":"none";xq("xiw",id).style.display=v==="yearly"?"":"none";});
+  document.querySelectorAll("[data-xs]").forEach(b=>b.onclick=async()=>{const id=b.dataset.xs,r=xq("xr",id).value,d=parseInt(xq("xd",id).value),mo=parseInt(xq("xm",id).value),it=xq("xi",id).value.trim()?parseInt(xq("xi",id).value):null;
+    if(r&&!(d>=1&&d<=31))return $("qmsg").textContent="Informe o dia do vencimento (1 a 31).";
+    if(r==="yearly"&&it!==null&&!(it>=2&&it<=48))return $("qmsg").textContent="Parcelas padrão: de 2 a 48, ou vazio para à vista.";
+    const u=!r?{recurrence:null,due_day:null,due_month:null,installments:null}:r==="monthly"?{recurrence:"monthly",due_day:d,due_month:null,installments:null}:{recurrence:"yearly",due_day:d,due_month:mo,installments:it};
+    const {error}=await sb.from("quick_entries").update(u).eq("id",id);
+    if(fail(error))return;
+    Object.assign(S.qs.find(q=>q.id===id),u);viewQs();$("qmsg").className="pos";$("qmsg").textContent="Conta fixa salva ✓";});
   document.querySelectorAll("[data-acc]").forEach(el=>el.onchange=async()=>{
     const id=el.dataset.acc;
     const {error}=await sb.from("quick_entries").update({default_account_id:el.value||null}).eq("id",id);
