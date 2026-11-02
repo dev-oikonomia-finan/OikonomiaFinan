@@ -2,7 +2,9 @@
 const mm=v=>fmt(Number(v)||0,"BRL");
 async function viewDash(){
   $("main").innerHTML='<div class="card mu">Carregando…</div>';
-  const ano=today().slice(0,4),per=["weekly","monthly","yearly"],hid=S.hid,pr=dper();
+  const ano=today().slice(0,4),hid=S.hid,pr=dper(),stmM=cm()==="stm",nm0=mAdd(today().slice(0,8)+"01",1);
+  /* seções de metas: pela fatura, mostra também o mês seguinte (e, em dezembro, o ano seguinte), que já recebe o cartão depois do fechamento */
+  const SEC=[{p:"weekly",ref:today()},{p:"monthly",ref:today()},...(stmM?[{p:"monthly",ref:nm0,nx:true}]:[]),{p:"yearly",ref:today()},...(stmM&&today().slice(5,7)==="12"?[{p:"yearly",ref:(+ano+1)+"-01-01",nx:true}]:[])];
   const [bl,un,lp,lm,rs,ip,...ps]=await Promise.all([
     (async()=>{const [a,i]=await Promise.all([sb.from("account_balances").select("account_id,type,balance_base").eq("household_id",hid),sb.from("investment_account_summary").select("account_id,in_assets,cash").eq("household_id",hid)]);if(!a.error&&!i.error){a.invSum=i.data||[];const m={};(i.data||[]).forEach(x=>{m[x.account_id]=Number(x.in_assets)||0;});(a.data||[]).forEach(x=>{x.balance_base=Number(x.balance_base||0)+(m[x.account_id]||0);});}return a;})(),
     sb.from("transactions").select("amount,fx_rate_to_base").eq("household_id",hid).is("category_id",null).is("transfer_group_id",null).lt("amount",0).gte("date",ano+"-01-01").lte("date",ano+"-12-31"),
@@ -10,7 +12,7 @@ async function viewDash(){
     sb.from("loan_monthly_commitment").select("month,amount").eq("household_id",hid),
     sb.rpc("period_summary",{p_household:hid,p_from:pr[0],p_to:pr[1],p_card_mode:cm()}),
     sb.from("investment_positions").select("account_id,class,qty,current_value,is_active").eq("household_id",hid),
-    ...per.map(p=>sb.rpc("budget_progress",{p_household:hid,p_ref:today(),p_period:p}))]);
+    ...SEC.map(x=>sb.rpc("budget_progress",{p_household:hid,p_ref:x.ref,p_period:x.p,p_card_mode:cm()}))]);
   if(S.tab!=="dash"||S.hid!==hid)return;
   const err=[bl,un,...ps].find(r=>r.error);
   if(err){$("main").innerHTML=`<div class="card neg">${esc(err.error.message)}</div>`;return;}
@@ -29,13 +31,14 @@ async function viewDash(){
   const d1=new Date(d);d1.setDate(d.getDate()-dw);const d2=new Date(d1);d2.setDate(d1.getDate()+6);
   const dm=x=>x.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
   const titles={weekly:`Semanal · ${dm(d1)} a ${dm(d2)}`,monthly:`Mensal · ${d.toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}`,yearly:`Anual · ${ano}`};
+  const secTitle=x=>!x.nx?titles[x.p]:x.p==="monthly"?`Mensal · ${new Date(x.ref+"T12:00:00").toLocaleDateString("pt-BR",{month:"long",year:"numeric"})} (parcial)`:`Anual · ${+ano+1} (parcial)`;
   const meter=m=>{
     const amt=Number(m.budget_amount),sp=Number(m.spent),rest=Number(m.remaining),pct=m.pct_used==null?null:Number(m.pct_used);
     const c=pct==null||amt<=0?"var(--mu)":pct<=80?"var(--grn)":pct<=100?"var(--yel)":"var(--red)";
     return `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:10px"><b>${esc(m.category_name)}</b><b style="color:${c}">${pct==null?"—":pct.toFixed(1).replace(".",",")+"%"}</b></div>
       <div class="bar"><i style="width:${pct==null?0:Math.min(pct,100)}%;background:${c}"></i></div>
       <div class="mu">${mm(sp)} de ${mm(amt)} · ${rest>=0?"restam "+mm(rest):"estourou em "+mm(-rest)}</div></div>`;};
-  const secs=per.map((p,i)=>{const L=ps[i].data||[];return L.length?`<div class="card"><b>${titles[p]}</b>${L.map(meter).join("")}</div>`:"";}).join("");
+  const secs=SEC.map((x,i)=>{const L=ps[i].data||[];return L.length?`<div class="card"><b>${secTitle(x)}</b>${x.nx?'<div class="mu">Já lançado ou previsto: compras no cartão depois do fechamento (fatura seguinte), parcelas e previstos.</div>':""}${x.p==="weekly"&&stmM?'<div class="mu">A meta semanal conta o cartão pela data da compra.</div>':""}${L.map(meter).join("")}</div>`:"";}).join("");
   const tem=ps.some(r=>(r.data||[]).length);
   const LP=lp.data||[],LM={};(lm.data||[]).forEach(r=>{LM[r.month]=(LM[r.month]||0)+Number(r.amount);});
   const mk=Object.keys(LM).sort().slice(0,6);
@@ -50,7 +53,7 @@ async function viewDash(){
   const RS=(rs.data&&rs.data[0])||null,inc=RS?Number(RS.income):0,exp=RS?Number(RS.expense):0,PL={mon:"Mês",year:"Ano",all:"Tudo",cus:"Período"};
   const perHtml=`<div class="card"><b>Resultado do período</b><div class="chips" style="margin-top:8px">${Object.keys(PL).map(k=>`<button data-dp="${k}" class="${S.dper===k?"on":""}">${PL[k]}</button>`).join("")}</div>
    ${S.dper==="cus"?`<div style="display:flex;gap:8px"><label style="flex:1">De<input type="date" id="pdf" value="${S.dfrom||""}"></label><label style="flex:1">Até<input type="date" id="pdt" value="${S.dto||""}"></label></div>${S.dfrom&&S.dto?"":'<p class="mu">Informe as duas datas (por enquanto mostra o mês atual).</p>'}`:""}
-   ${rs.error?`<p class="neg">${esc(rs.error.message)}</p><p class="mu">Rode o script cartao_partida.sql no Supabase.</p>`:`<div class="row"><span>Receitas</span><span class="pos">${mm(inc)}</span></div><div class="row"><span>Despesas</span><span class="neg">${mm(exp)}</span></div><div class="row"><b>Resultado</b><b class="${inc+exp<0?"neg":"pos"}">${mm(inc+exp)}</b></div><div class="seg" style="margin-top:8px"><button data-cm="stm" class="${cm()==="stm"?"on":""}">Cartão: pela fatura</button><button data-cm="buy" class="${cm()==="buy"?"on":""}">Cartão: pela compra</button></div><div class="mu">Sem transferências. ${cm()==="stm"?"Compras no cartão contam no mês da fatura (vencimento).":"Compras no cartão contam pela data da compra."} As metas abaixo sempre contam pela data da compra.</div>`}</div>`;
+   ${rs.error?`<p class="neg">${esc(rs.error.message)}</p><p class="mu">Rode o script cartao_partida.sql no Supabase.</p>`:`<div class="row"><span>Receitas</span><span class="pos">${mm(inc)}</span></div><div class="row"><span>Despesas</span><span class="neg">${mm(exp)}</span></div><div class="row"><b>Resultado</b><b class="${inc+exp<0?"neg":"pos"}">${mm(inc+exp)}</b></div><div class="seg" style="margin-top:8px"><button data-cm="stm" class="${cm()==="stm"?"on":""}">Cartão: pela fatura</button><button data-cm="buy" class="${cm()==="buy"?"on":""}">Cartão: pela compra</button></div><div class="mu">Sem transferências. ${cm()==="stm"?"Compras no cartão contam no mês da fatura (vencimento).":"Compras no cartão contam pela data da compra."} ${cm()==="stm"?"As metas mensais e anuais também contam o cartão pela fatura; a semanal, pela data da compra.":"As metas abaixo também contam pela data da compra."}</div>`}</div>`;
   $("main").innerHTML=`<div class="card"><div class="mu">Saldo geral</div>
     <div style="font-size:1.6rem;font-weight:700" class="${geral<0?"neg":"pos"}">${mm(geral)}</div>
     <div class="row" style="margin-top:8px"><span>Disponível (corrente e dinheiro)</span><span class="${disp<0?"neg":""}">${mm(disp)}</span></div>
