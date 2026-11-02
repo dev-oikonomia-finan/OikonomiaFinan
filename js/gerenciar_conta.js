@@ -13,6 +13,15 @@ async function viewAcm(){
      <label>Na data (último dia de um mês)<input type="date" id="aod" value="${a.opening_date||""}"></label>
      <button class="sec" id="aos">Salvar saldo inicial</button>${a.opening_date?'<button class="x" id="aoc" style="margin-top:8px">Remover saldo inicial</button>':""}
      <p class="mu">Informe o saldo do extrato no último dia de um mês (ex.: 31/12/2025). Os lançamentos até essa data continuam visíveis e contam no Resultado, mas não somam no saldo. Use a mesma data em todas as contas. Para mudar a data de uma conta com fechamentos, reabra antes os fechamentos posteriores.</p></div>`:""}
+   ${(a.type==="checking"||a.type==="cash")&&cur!=="BRL"?`<div class="card" style="margin-top:12px"><b>Saldo inicial</b>
+     ${a.opening_date?`<div class="row"><span class="mu">Gravado em ${fdt(a.opening_date)}</span><span style="text-align:right">${fmt(a.opening_balance,cur)}<div class="mu">custo ${fmt(a.opening_cost,"BRL")}${Number(a.opening_balance)>0?" · médio "+fx4(a.opening_cost/a.opening_balance)+" por 1 "+esc(cur):""}</div></span></div>`:""}
+     <label>Saldo no extrato (${esc(cur)})<input id="aob" inputmode="decimal" placeholder="0,00" value="${a.opening_balance==null?"":fa(a.opening_balance)}"></label>
+     <label>Na data (último dia de um mês)<input type="date" id="aod" value="${a.opening_date||""}"></label>
+     <label>Total pago em reais nas conversões até a data<input id="aor" inputmode="decimal" placeholder="0,00"></label>
+     <label>Total recebido em ${esc(cur)} nessas conversões<input id="aoq" inputmode="decimal" placeholder="0,00"></label>
+     <p id="aop" class="mu"></p>
+     <button class="sec" id="aos">Salvar saldo inicial</button>${a.opening_date?'<button class="x" id="aoc" style="margin-top:8px">Remover saldo inicial</button>':""}
+     <p class="mu">O custo do saldo é o saldo × (total pago ÷ total recebido): se você gastou parte dos ${esc(cur)} antes da data, o custo é proporcional ao que sobrou. Os lançamentos até a data continuam visíveis, mas não somam no saldo nem no custo médio; o saldo inicial não vira receita. ${a.opening_date?"Para mudar só a data, deixe os totais vazios: o custo gravado é mantido se o saldo não mudar. ":""}Para mudar com fechamentos posteriores, reabra-os antes.</p></div>`:""}
    ${a.type==="checking"||a.type==="cash"?`<div class="card" style="margin-top:12px"><b>Grupo internacional</b>
      <label>Nome do grupo<input id="agn" list="agl2" placeholder="Ex.: ARQ Internacional" value="${esc((a.group_name||"").trim())}"></label><datalist id="agl2">${grpNames().map(n=>`<option value="${esc(n)}">`).join("")}</datalist>
      <button class="sec" id="agsv">Salvar grupo</button>
@@ -32,15 +41,32 @@ async function viewAcm(){
     const {error}=await sb.from("accounts").update({name:n}).eq("id",a.id);
     if(error)return say("Erro: "+error.message);
     await loadRef();go("acc");};
+  /* moeda estrangeira: custo do saldo = saldo × (total pago em reais ÷ total recebido na moeda) */
+  const fgo=cur!=="BRL",tot=()=>{const r=$("aor").value.trim(),q=$("aoq").value.trim();return {r:r?num(r):null,q:q?num(q):null};};
+  const aop=()=>{if(!$("aop"))return;const v=num($("aob").value||""),T=tot();
+    if(!(T.r>0&&T.q>0)){$("aop").textContent="";return;}
+    const md=T.r/T.q;
+    $("aop").textContent=`Custo médio ${fx4(md)} por 1 ${cur}`+(v>=0?` · custo do saldo inicial ${fmt(Math.round(v*md*100)/100,"BRL")}`:"")+(v>T.q+1e-9?` · ⚠️ o saldo é maior que o total recebido; confira se faltou alguma entrada.`:"");};
+  if(fgo&&$("aor"))["aob","aor","aoq"].forEach(i=>$(i).oninput=aop);
   if($("aos"))$("aos").onclick=async()=>{const v=num($("aob").value),d=$("aod").value;
     if(isNaN(v))return say("Informe o saldo do extrato.");
+    if(fgo&&v<0)return say("O saldo em moeda estrangeira não pode ser negativo.");
     if(!d)return say("Informe a data do saldo.");
     const nx=new Date(d+"T12:00:00");nx.setDate(nx.getDate()+1);
     if(nx.getDate()!==1)return say("Use o último dia de um mês (ex.: 31/08/2026).");
-    const {error}=await sb.from("accounts").update({opening_balance:v,opening_date:d}).eq("id",a.id);
-    if(error)return say("Erro: "+error.message);await loadRef();viewAcm();};
+    const row={opening_balance:v,opening_date:d};
+    if(fgo){const T=tot();
+      if(T.r!==null||T.q!==null){
+        if(!(T.r>0&&T.q>0))return say("Informe os dois totais das conversões (reais pagos e moeda recebida), maiores que zero.");
+        row.opening_cost=Math.round(v*T.r/T.q*100)/100;}
+      else if(v===0)row.opening_cost=0;
+      else if(a.opening_cost!=null&&Number(a.opening_balance)===v)row.opening_cost=Number(a.opening_cost);
+      else return say("Informe o total pago em reais e o total recebido nas conversões, para calcular o custo do saldo.");}
+    $("aos").disabled=true;
+    const {error}=await sb.from("accounts").update(row).eq("id",a.id);
+    if(error){$("aos").disabled=false;return say("Erro: "+error.message);}await loadRef();viewAcm();};
   if($("aoc"))$("aoc").onclick=async()=>{if(!confirm("Remover o saldo inicial desta conta?"))return;
-    const {error}=await sb.from("accounts").update({opening_balance:null,opening_date:null}).eq("id",a.id);
+    const {error}=await sb.from("accounts").update(fgo?{opening_balance:null,opening_date:null,opening_cost:null}:{opening_balance:null,opening_date:null}).eq("id",a.id);
     if(error)return say("Erro: "+error.message);await loadRef();viewAcm();};
   if($("agsv"))$("agsv").onclick=async()=>{const g=$("agn").value.trim(),{error}=await sb.from("accounts").update({group_name:g||null}).eq("id",a.id);
     if(error)return say(error.message.includes("accounts_group_uq")?"Já existe, neste grupo, uma conta ativa nesta moeda.":"Erro: "+error.message);await loadRef();viewAcm();};
