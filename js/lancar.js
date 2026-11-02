@@ -8,7 +8,7 @@ function viewAdd(){
   $("main").innerHTML=`<div class="card">
    <div class="seg"><button data-k="expense" class="${S.kind==="expense"?"on":""}">Despesa</button><button data-k="income" class="${S.kind==="income"?"on":""}">Receita</button><button data-k="tr">Transferência</button></div>
    ${qs.length?`<div class="chips">${qs.map(q=>`<button data-q="${q.id}" class="${P.qid===q.id?"on":""}">${q.is_favorite?"⭐ ":""}${esc(q.name)}</button>`).join("")}</div>`:""}
-   <button class="lk" id="mq">⚙ Gerenciar atalhos</button>
+   <button class="lk" id="mq">⚙ Gerenciar atalhos</button> <button class="lk" id="mlt">📋 Lançar em lote</button>
    <label><span id="vt">Valor</span><input id="v" inputmode="decimal" placeholder="0,00" value="${fa(P.amt)}"></label>
    <div id="fxw" hidden></div><p id="fxi" class="mu"></p>
    ${S.kind==="expense"?`<label class="ck" id="pcl"><input type="checkbox" id="pc"> Compra parcelada</label>
@@ -27,7 +27,7 @@ function viewAdd(){
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{
     if(b.dataset.k==="tr"){S.tr=null;S.trFrom="add";return go("tr");}
     S.kind=b.dataset.k;S.pre=null;viewAdd();});
-  $("mq").onclick=()=>go("qs");
+  $("mq").onclick=()=>go("qs");$("mlt").onclick=()=>go("lote");
   const pv=()=>{if(!$("pc"))return;const on=$("pc").checked;$("pcw").hidden=!on;
     const n=parseInt($("pn").value),pa=parseInt($("pa").value)||1,run=on&&n>=2&&pa>1&&pa<=n;
     $("pbw").hidden=!run;$("vt").textContent=on?(run?"Valor da parcela":"Valor total"):"Valor";

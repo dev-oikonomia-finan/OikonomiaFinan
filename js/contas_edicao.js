@@ -60,9 +60,17 @@ async function viewEdit(){
     .eq("id",S.ed).single();
   if(error||!t){alert("Lançamento não encontrado.");return go("list");}
   t._back=back;
+  /* transferência: lê a outra ponta (mesmo transfer_group_id) só para mostrar origem e destino */
+  if(t.transfer_group_id){const o=await sb.from("transactions").select("account_id,amount,currency,accounts(name)").eq("transfer_group_id",t.transfer_group_id).neq("id",t.id).limit(1);
+    t._other=(o.data||[])[0]||null;}
   const D={kind:t.amount<0?"expense":"income",val:f2(t.amount),date:t.date,cat:t.category_id||"",acc:t.account_id,desc:t.description||"",hold:t.card_holder_id||"",wal:t.wallet_id||"",all:false,oa:t.original_amount==null?"":f2(t.original_amount),oc:(t.original_currency||"").trim(),fi:t.fx_input==null?"":String(Number(t.fx_input)).replace(".",","),trip:t.trip_id||""};
   t._d0={...D};drawEdit(t,D);
 }
+/* origem e destino de uma transferência (campos só informativos) */
+function trInfo(t){const o=t._other,me={name:(S.accounts.find(a=>a.id===t.account_id)||{}).name||t.accounts?.name||"Conta",amt:Number(t.amount),cur:t.currency.trim()};
+  const ot=o?{name:(S.accounts.find(a=>a.id===o.account_id)||{}).name||o.accounts?.name||"Conta (inativa)",amt:Number(o.amount),cur:String(o.currency||"").trim()}:null;
+  const out=me.amt<0?me:ot,inn=me.amt<0?ot:me,lab=x=>x?esc(x.name)+(out&&inn&&out.cur!==inn.cur?" · "+fmt(Math.abs(x.amt),x.cur):""):"(outra ponta não encontrada)";
+  return `<label>De (origem)<input value="${lab(out)}" disabled></label><label>Para (destino)<input value="${lab(inn)}" disabled></label>`;}
 function drawEdit(t,D){
   const tr=!!t.transfer_group_id,pa=!!t.installment_group_id,cur=t.currency.trim(),lo=pa?S.loans.find(l=>l.installment_group_id===t.installment_group_id):null;
   const ben=(S.accounts.find(a=>a.id===t.account_id)||{}).type==="benefit",fgn=!tr&&!pa&&cur!=="BRL";
@@ -80,7 +88,7 @@ function drawEdit(t,D){
    ${fgn?(D.kind==="expense"?`<label>Valor original, se a compra foi em outra moeda (opcional)<div class="seg"><input id="eoa" inputmode="decimal" placeholder="0,00" value="${esc(D.oa)}"><input id="eoc" maxlength="3" placeholder="EUR" value="${esc(D.oc)}" style="max-width:90px;text-transform:uppercase"></div></label><div class="mu">Não altera saldo nem custo; alimenta a taxa média do Posso comprar? em Internacional.</div>`
      :`<label>Taxa em R$ por 1 ${esc(cur)} (opcional)<input id="efi" inputmode="decimal" placeholder="vazio = custo médio atual" value="${esc(D.fi)}"></label><div class="mu">Muda o custo médio da conta (o banco recalcula) e não vale em mês fechado.</div>`):""}
    ${tr?"":`<label>Categoria<select id="ec">${catOpts(D.kind,D.cat,true)}</select></label>`}
-   <label>Conta / cartão<select id="ea" ${tr||ben||(pa&&!lo)?"disabled":""}>${accs.map(a=>`<option value="${a.id}" ${a.id===D.acc?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
+   ${tr?trInfo(t):`<label>Conta / cartão<select id="ea" ${ben||(pa&&!lo)?"disabled":""}>${accs.map(a=>`<option value="${a.id}" ${a.id===D.acc?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>`}
    ${!tr&&holdersOf(t.account_id).length>1?`<label>Portador<select id="eh">${holdersOf(t.account_id).map(h=>`<option value="${h.id}" ${h.id===D.hold?"selected":""}>${esc(h.name)}</option>`).join("")}</select></label>`:""}
    ${!tr&&ben?`<label>Carteira<select id="ew">${S.wallets.filter(w=>w.account_id===t.account_id&&(w.is_active||w.id===D.wal)).map(w=>`<option value="${w.id}" ${w.id===D.wal?"selected":""}>${esc(w.name)}${w.is_active?"":" (inativa)"}</option>`).join("")}</select></label>`:""}
    <label>Descrição<input id="edsc" value="${esc(D.desc)}"></label>

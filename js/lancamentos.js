@@ -63,35 +63,65 @@ function viewTr(){
     S.tr=null;go(S.trFrom||"acc");};
 }
 
+/* quadro do mês de uma conta vale: por carteira, saldo anterior (fechamento por carteira ou calculado) + créditos + gastos */
+async function walMonth(fb,m0){
+  const wsAll=S.wallets.filter(w=>w.account_id===fb.id),pm=mAdd(m0,-1),m1=mAdd(m0,1);
+  const [mq,cq,bq]=await Promise.all([
+    sb.from("transactions").select("amount,wallet_id,date").eq("account_id",fb.id).in("status",["posted","planned"]).gte("date",m0).lt("date",m1).limit(5000),
+    sb.from("balance_closings").select("id").eq("account_id",fb.id).eq("ref_month",pm).maybeSingle(),
+    sb.rpc("wallet_balance_before",{p_account:fb.id,p_date:m0})]);
+  const e0=[mq,cq,bq].find(r=>r.error);
+  if(e0)return {err:e0.error.message};
+  let wcl=[];
+  if(cq.data){const r=await sb.from("wallet_closings").select("wallet_id,reported_balance").eq("closing_id",cq.data.id);wcl=r.error?[]:(r.data||[]);}
+  const rep={};wcl.forEach(r=>{rep[r.wallet_id]=Number(r.reported_balance)||0;});
+  const prv={};(bq.data||[]).forEach(r=>{prv[r.wallet_id]=Number(r.balance)||0;});
+  const mv={};(mq.data||[]).forEach(x=>{const w=wsAll.find(z=>z.id===x.wallet_id);
+    if(!w||(w.opening_date&&x.date<=w.opening_date))return;
+    const o=mv[w.id]=mv[w.id]||{i:0,e:0},v=Number(x.amount)||0;if(v>0)o.i+=v;else o.e+=v;});
+  const rows=wsAll.map(w=>{const o=mv[w.id]||{i:0,e:0},hasC=rep[w.id]!=null,p=hasC?rep[w.id]:(prv[w.id]||0);return {w,p,hasC,i:o.i,e:o.e,f:p+o.i+o.e};})
+    .filter(r=>r.w.is_active||Math.abs(r.p)>=0.005||r.i||r.e);
+  const T=rows.reduce((t,r)=>({p:t.p+r.p,i:t.i+r.i,e:t.e+r.e,f:t.f+r.f}),{p:0,i:0,e:0,f:0});
+  return {rows,T,pm,oldCl:!!cq.data&&!wcl.length};
+}
 async function viewList(){
   if(S.fAcc&&!S.accounts.some(a=>a.id===S.fAcc))S.fAcc=null;
+  if(S.fTrip&&!tripById(S.fTrip))S.fTrip=null;
+  const ftr=S.fTrip?tripById(S.fTrip):null;
   const fcur=((S.fAcc&&S.accounts.find(a=>a.id===S.fAcc))||{}).currency,nat=!!fcur&&fcur.trim()!=="BRL",fxm=x=>nat?1:Number(x.fx_rate_to_base||1),mm=v=>fmt(Number(v)||0,nat?fcur:"BRL");
   let q=sb.from("transactions")
     .select("id,account_id,statement_month,card_holder_id,wallet_id,date,amount,currency,description,status,installment_number,installment_total,installment_group_id,transfer_group_id,original_amount,original_currency,fx_rate_to_base,trip_id,categories(name),accounts!inner(name,household_id)")
     .eq("accounts.household_id",S.hid);
-  let sq=sb.from("transactions").select("amount,fx_rate_to_base,transfer_group_id,accounts!inner(household_id,type,is_active)").eq("accounts.household_id",S.hid);
-  if(S.fAcc){q=q.eq("account_id",S.fAcc);sq=sq.eq("account_id",S.fAcc);}else sq=sq.in("accounts.type",["checking","cash","credit_card","benefit"]).eq("accounts.is_active",true);
+  let sq=sb.from("transactions").select("amount,fx_rate_to_base,transfer_group_id,account_id,accounts!inner(household_id,type,is_active)").eq("accounts.household_id",S.hid);
+  /* filtro por viagem: a lista e um resumo próprio (tq) seguem os mesmos filtros de conta, carteira e período */
+  let tq=ftr?sb.from("transactions").select("amount,fx_rate_to_base,accounts!inner(household_id)").eq("accounts.household_id",S.hid).eq("trip_id",ftr.id):null;
+  if(ftr)q=q.eq("trip_id",ftr.id);
+  if(S.fAcc){q=q.eq("account_id",S.fAcc);sq=sq.eq("account_id",S.fAcc);if(tq)tq=tq.eq("account_id",S.fAcc);}else sq=sq.in("accounts.type",["checking","cash","credit_card","benefit"]).eq("accounts.is_active",true);
   const fb=S.fAcc?S.accounts.find(a=>a.id===S.fAcc&&a.type==="benefit"):null;
   if(fb&&S.fWal&&!S.wallets.some(w=>w.id===S.fWal&&w.account_id===fb.id))S.fWal=null;
   if(!fb)S.fWal=null;
-  if(fb&&S.fWal)q=q.eq("wallet_id",S.fWal);
+  if(fb&&S.fWal){q=q.eq("wallet_id",S.fWal);if(tq)tq=tq.eq("wallet_id",S.fWal);}
   const mon=S.lper==="mon",m0=S.lmon||(S.lmon=today().slice(0,8)+"01");
   const fc=S.fAcc&&S.accounts.find(a=>a.id===S.fAcc&&a.type==="credit_card");
   const cids=S.accounts.filter(a=>a.type==="credit_card").map(a=>a.id),byStm=mon&&!S.fAcc&&cm()==="stm"&&cids.length>0;
-  if(mon){if(fc){q=q.eq("statement_month",m0);sq=sq.eq("statement_month",m0);}
+  if(mon){if(fc){q=q.eq("statement_month",m0);sq=sq.eq("statement_month",m0);if(tq)tq=tq.eq("statement_month",m0);}
     else if(byStm){const m1=mAdd(m0,1),L=cids.join(","),
       f=`and(transfer_group_id.not.is.null,date.gte.${m0},date.lt.${m1}),and(transfer_group_id.is.null,account_id.not.in.(${L}),date.gte.${m0},date.lt.${m1}),and(transfer_group_id.is.null,account_id.in.(${L}),statement_month.gte.${m0},statement_month.lt.${m1})`;
-      q=q.or(f);sq=sq.or(f);}
-    else{q=q.gte("date",m0).lt("date",mAdd(m0,1));sq=sq.gte("date",m0).lt("date",mAdd(m0,1));}}
+      q=q.or(f);sq=sq.or(f);if(tq)tq=tq.or(f);}
+    else{q=q.gte("date",m0).lt("date",mAdd(m0,1));sq=sq.gte("date",m0).lt("date",mAdd(m0,1));if(tq)tq=tq.gte("date",m0).lt("date",mAdd(m0,1));}}
   const grp=!S.fAcc&&lg()==="acc";
-  const [{data,error},bl,sm]=await Promise.all([
+  const [{data,error},bl,sm,tsm]=await Promise.all([
     (grp?q.order("account_id"):q).order("date",{ascending:false}).order("created_at",{ascending:false}).limit(grp&&mon?Math.max(S.lim,500):S.lim),
-    S.fAcc?sb.from("account_balances").select("balance,currency").eq("account_id",S.fAcc).maybeSingle():Promise.resolve({data:null}),mon?sq:Promise.resolve({data:null})]);
+    S.fAcc?sb.from("account_balances").select("balance,currency").eq("account_id",S.fAcc).maybeSingle():Promise.resolve({data:null}),mon&&!ftr?sq:Promise.resolve({data:null}),tq?tq.limit(5000):Promise.resolve({data:null})]);
   if(error){$("main").innerHTML=`<div class="card neg">${esc(error.message)}</div>`;return;}
   const bal=bl.data;
   const ent=(sm.data||[]).reduce((r,x)=>{const v=Number(x.amount)*fxm(x);if(x.transfer_group_id){r[2]+=v;return r;}return v>0?[r[0]+v,r[1],r[2]]:[r[0],r[1]+v,r[2]];},[0,0,0]);
   const tr={cards:{},inn:0,out:0};let prev=0,prevOk=false,prevCalc=false;
-  if(mon&&S.fAcc&&!fc){
+  let finB=null;
+  if(mon&&S.fAcc&&!fc&&!ftr){
+    const acF=S.accounts.find(a=>a.id===S.fAcc);
+    if(nat&&acF&&(acF.type==="checking"||acF.type==="cash")){const {data:fb2}=await sb.rpc("account_balance_before",{p_account:S.fAcc,p_date:mAdd(m0,1)});
+      if(fb2&&fb2[0])finB=Number(fb2[0].balance_base);}
     const {data:pc}=await sb.from("balance_closings").select("reported_balance").eq("account_id",S.fAcc).eq("ref_month",mAdd(m0,-1)).maybeSingle();
     if(pc){prev=Number(pc.reported_balance)||0;prevOk=true;}
     else{const ac0=S.accounts.find(a=>a.id===S.fAcc);
@@ -105,7 +135,11 @@ async function viewList(){
       const v=Number(x.amount)*fxm(x),oa=S.accounts.find(a=>a.id===oth[x.transfer_group_id]);
       if(oa&&oa.type==="credit_card")tr.cards[oa.id]=(tr.cards[oa.id]||0)+v;else if(v>0)tr.inn+=v;else tr.out+=v;});}
   const sc=v=>v<0?"neg":"pos",tot=ent[0]+ent[1]+ent[2],ctot=Object.values(tr.cards).reduce((r,v)=>r+v,0);
-  const all0=mon&&!S.fAcc,QD={prev:0,inc:0,exp:0,fat:0,oth:0,sem:[],err:"",proj:false};
+  const all0=mon&&!S.fAcc&&!ftr,QD={prev:0,inc:0,exp:0,fat:0,oth:0,sem:[],err:"",proj:false};
+  /* por conta, para o "Agrupar por conta" no Mês: corrente e dinheiro (ACCF, na moeda da conta), vale (WALF) e cartão (CARDF) */
+  const ACCF={},WALF={},CARDF={};
+  /* quadro separado: QD = só contas em reais; QF = contas em moeda estrangeira, por moeda (na moeda; pB/mB = em R$ pelo custo) */
+  const QF={},qf=c=>QF[c]=QF[c]||{prev:0,inc:0,exp:0,inn:0,out:0,pB:0,mB:0};
   if(all0){
     const cs=S.accounts.filter(a=>a.type==="checking"||a.type==="cash"),cid=cs.map(a=>a.id),m1=mAdd(m0,1),pm=mAdd(m0,-1);
     QD.proj=m0>=today().slice(0,8)+"01";
@@ -124,51 +158,56 @@ async function viewList(){
         cs.forEach((a,i)=>{
           const bb=(bq[i].data||[])[0],isB=a.currency.trim()==="BRL";
           const pv=(isB&&cl[a.id]!=null)?cl[a.id]:(bb?Number(bb.balance_base)||0:0);
-          QD.prev+=pv;
+          if(isB)QD.prev+=pv;else{const F=qf(a.currency.trim());F.prev+=cl[a.id]!=null?cl[a.id]:(bb?Number(bb.balance)||0:0);F.pB+=bb?Number(bb.balance_base)||0:0;}
+          ACCF[a.id]={prev:cl[a.id]!=null?cl[a.id]:(bb?Number(bb.balance)||0:0),mov:0,cur:a.currency.trim()};
           if(!a.opening_date&&cl[a.id]==null&&(Math.abs(pv)>=0.005||mv[a.id]))QD.sem.push(a.name);});
         const ids=[...new Set(rows.filter(x=>x.transfer_group_id).map(x=>x.transfer_group_id))],og={};
         for(let i=0;i<ids.length;i+=100){
           const {data:o}=await sb.from("transactions").select("transfer_group_id,account_id").in("transfer_group_id",ids.slice(i,i+100));
           (o||[]).forEach(x=>{(og[x.transfer_group_id]=og[x.transfer_group_id]||[]).push(x.account_id);});}
+        rows.forEach(x=>{if(ACCF[x.account_id])ACCF[x.account_id].mov+=Number(x.amount)||0;});
         rows.forEach(x=>{
-          const v=Number(x.amount)*Number(x.fx_rate_to_base||1);
+          const v=Number(x.amount)*Number(x.fx_rate_to_base||1),ca=ACCF[x.account_id]?ACCF[x.account_id].cur:"BRL";
+          if(ca!=="BRL"){const F=qf(ca),q=Number(x.amount)||0;F.mB+=v;
+            if(!x.transfer_group_id){if(q>0)F.inc+=q;else F.exp+=q;}else{if(q>0)F.inn+=q;else F.out+=q;}return;}
           if(!x.transfer_group_id){if(v>0)QD.inc+=v;else QD.exp+=v;return;}
           const oid=(og[x.transfer_group_id]||[]).find(id=>id!==x.account_id),oa=S.accounts.find(a=>a.id===oid);
           if(oa&&oa.type==="credit_card")QD.fat+=v;else QD.oth+=v;});}}}
-  const qdFin=QD.prev+QD.inc+QD.exp+QD.fat+QD.oth;
-  const qdHtml=all0?`<b style="display:block;margin-top:16px">Saldo das contas correntes e dinheiro</b>
+  if(QD.err)Object.keys(ACCF).forEach(k=>delete ACCF[k]);
+  if(all0&&grp){
+    const bens=S.accounts.filter(a=>a.type==="benefit"),R=await Promise.all(bens.map(a=>walMonth(a,m0)));
+    bens.forEach((a,i)=>{if(!R[i].err)WALF[a.id]=R[i];});
+    (sm.data||[]).forEach(x=>{if(x.transfer_group_id||!S.accounts.some(a=>a.id===x.account_id&&a.type==="credit_card"))return;
+      CARDF[x.account_id]=(CARDF[x.account_id]||0)-Number(x.amount)*fxm(x);});}
+  const qdFin=QD.prev+QD.inc+QD.exp+QD.fat+QD.oth,FC=Object.keys(QF).sort(),fFin=c=>QF[c].prev+QF[c].inc+QF[c].exp+QF[c].inn+QF[c].out,
+    fTot=qdFin+FC.reduce((t,c)=>t+QF[c].pB+QF[c].mB,0);
+  const fxHtml=FC.map(c=>{const F=QF[c],f=fFin(c),fm=v=>fmt(v,c);return `<b style="display:block;margin-top:14px">Contas em ${esc(c)}</b>
+    <div class="row"><span class="mu">Saldo do mês anterior</span><span class="${sc(F.prev)}">${fm(F.prev)}</span></div>
+    <div class="row"><span class="mu">Conversões e transferências recebidas</span><span class="pos">${fm(F.inn)}</span></div>
+    <div class="row"><span class="mu">Receitas (reembolsos)</span><span class="pos">${fm(F.inc)}</span></div>
+    <div class="row"><span class="mu">Despesas</span><span class="neg">${fm(F.exp)}</span></div>
+    <div class="row"><span class="mu">Vendas e transferências enviadas</span><span class="neg">${fm(F.out)}</span></div>
+    <div class="row"><b>${QD.proj?"Saldo final projetado":"Saldo final"} em ${esc(c)}</b><b class="${sc(f)}">${fm(f)}</b></div>
+    <div class="mu" style="text-align:right">≈ ${mm(F.pB+F.mB)} pelo custo médio</div>`;}).join("");
+  const qdHtml=all0?`<b style="display:block;margin-top:16px">Saldo das contas correntes e dinheiro</b>${FC.length?'<b style="display:block;margin-top:8px">Contas em reais</b>':""}
     ${QD.err?`<p class="neg">${esc(QD.err)}</p><p class="mu">Rode o script saldo_inicial.sql no Supabase.</p>`:`<div class="row"><span class="mu">Saldo do mês anterior</span><span class="${sc(QD.prev)}">${mm(QD.prev)}</span></div>
     <div class="row"><span class="mu">Receitas em conta</span><span class="pos">${mm(QD.inc)}</span></div>
     <div class="row"><span class="mu">Despesas em conta (sem cartão)</span><span class="neg">${mm(QD.exp)}</span></div>
     <div class="row"><span class="mu">Faturas de cartão pagas</span><span class="${sc(QD.fat)}">${mm(QD.fat)}</span></div>
     <div class="row"><span class="mu">Outras transferências (aportes, resgates, conversões)</span><span class="${sc(QD.oth)}">${mm(QD.oth)}</span></div>
-    <div class="row"><b>${QD.proj?"Saldo final projetado":"Saldo final"}</b><b class="${sc(qdFin)}">${mm(qdFin)}</b></div>
+    <div class="row"><b>${QD.proj?"Saldo final projetado":"Saldo final"}${FC.length?" em reais":""}</b><b class="${sc(qdFin)}">${mm(qdFin)}</b></div>
+    ${FC.length?fxHtml+`<div class="row" style="margin-top:14px;border-top:2px solid var(--ac)"><b>${QD.proj?"Saldo final projetado":"Saldo final"} total</b><b class="${sc(fTot)}">${mm(fTot)}</b></div><div class="mu">Reais + moeda estrangeira em R$ pelo custo médio. Bate com o Disponível do Painel (em reais + em moeda estrangeira).</div>`:""}
     <div class="mu">Soma as contas correntes e de dinheiro ativas, como o Disponível do Painel; deve bater com a soma dos extratos quando os lançamentos estiverem completos. Cartões e vale ficam de fora. Saldo do mês anterior: fechamento do mês, ou saldo inicial mais os lançamentos.${QD.proj?" Inclui lançamentos previstos até o fim do mês.":""}</div>
     ${QD.sem.length?`<div class="mu" style="color:var(--yel)">Sem saldo inicial nem fechamento (saldo só pelos lançamentos): ${QD.sem.map(esc).join(", ")}.</div>`:""}`}`:"";
   let wqHtml="",wchips="";
   if(fb){
     const wsAll=S.wallets.filter(w=>w.account_id===fb.id),cur=fb.currency.trim(),mw=v=>fmt(Number(v)||0,cur);
     wchips=`<div class="chips"><button data-fw="" class="${S.fWal?"":"on"}">Todas as carteiras</button>${wsAll.map(w=>`<button data-fw="${w.id}" class="${S.fWal===w.id?"on":""}">${esc(w.name)}${w.is_active?"":" (inativa)"}</button>`).join("")}</div>`;
-    if(mon){
-      const pm=mAdd(m0,-1),m1=mAdd(m0,1);
-      const [mq,cq,bq]=await Promise.all([
-        sb.from("transactions").select("amount,wallet_id,date").eq("account_id",fb.id).in("status",["posted","planned"]).gte("date",m0).lt("date",m1).limit(5000),
-        sb.from("balance_closings").select("id").eq("account_id",fb.id).eq("ref_month",pm).maybeSingle(),
-        sb.rpc("wallet_balance_before",{p_account:fb.id,p_date:m0})]);
-      const e0=[mq,cq,bq].find(r=>r.error);
-      if(e0)wqHtml=`<p class="neg">${esc(e0.error.message)}</p><p class="mu">Se a função não existe, rode o script vale_saldo_por_carteira.sql no Supabase.</p>`;
+    if(mon&&!ftr){
+      const WM=await walMonth(fb,m0);
+      if(WM.err)wqHtml=`<p class="neg">${esc(WM.err)}</p><p class="mu">Se a função não existe, rode o script vale_saldo_por_carteira.sql no Supabase.</p>`;
       else{
-        let wcl=[];
-        if(cq.data){const r=await sb.from("wallet_closings").select("wallet_id,reported_balance").eq("closing_id",cq.data.id);wcl=r.error?[]:(r.data||[]);}
-        const rep={};wcl.forEach(r=>{rep[r.wallet_id]=Number(r.reported_balance)||0;});
-        const prv={};(bq.data||[]).forEach(r=>{prv[r.wallet_id]=Number(r.balance)||0;});
-        const mv={};(mq.data||[]).forEach(x=>{const w=wsAll.find(z=>z.id===x.wallet_id);
-          if(!w||(w.opening_date&&x.date<=w.opening_date))return;
-          const o=mv[w.id]=mv[w.id]||{i:0,e:0},v=Number(x.amount)||0;if(v>0)o.i+=v;else o.e+=v;});
-        const rows=wsAll.map(w=>{const o=mv[w.id]||{i:0,e:0},hasC=rep[w.id]!=null,p=hasC?rep[w.id]:(prv[w.id]||0);return {w,p,hasC,i:o.i,e:o.e,f:p+o.i+o.e};})
-          .filter(r=>r.w.is_active||Math.abs(r.p)>=0.005||r.i||r.e);
-        const T=rows.reduce((t,r)=>({p:t.p+r.p,i:t.i+r.i,e:t.e+r.e,f:t.f+r.f}),{p:0,i:0,e:0,f:0});
-        const proj=m0>=today().slice(0,8)+"01",oldCl=cq.data&&!wcl.length;
+        const {rows,T,pm,oldCl}=WM,proj=m0>=today().slice(0,8)+"01";
         wqHtml=`<b style="display:block;margin-top:10px">Saldo por carteira</b>
          ${rows.length?rows.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--bd)"><div class="row" style="border:0;padding:0"><span>${esc(r.w.name)}${r.w.is_active?"":' <span class="mu">(inativa)</span>'}</span><b class="${sc(r.f)}">${mw(r.f)}</b></div><div class="mu">anterior ${mw(r.p)}${r.hasC?"":" (calculado)"} · créditos ${mw(r.i)} · gastos ${mw(r.e)}</div></div>`).join(""):'<p class="mu">Nenhuma carteira nesta conta.</p>'}
          <b style="display:block;margin-top:10px">Total da conta</b>
@@ -187,20 +226,39 @@ async function viewList(){
   let sumHtml="";
   const fi=S.fAcc&&S.accounts.find(a=>a.id===S.fAcc&&a.type==="investment");
   const iv={inc:0,ops:0};
-  if(fi&&mon){
-    const ma=mAdd(m0,1),[ri,ro]=await Promise.all([
-      sb.from("investment_income").select("net,investment_assets!inner(account_id)").eq("investment_assets.account_id",S.fAcc).gte("date",m0).lt("date",ma),
-      sb.from("investment_operations").select("side,amount,fees,investment_assets!inner(account_id)").eq("investment_assets.account_id",S.fAcc).gte("date",m0).lt("date",ma)]);
-    iv.inc=(ri.data||[]).reduce((r,x)=>r+Number(x.net),0);
-    iv.ops=(ro.data||[]).reduce((r,x)=>r+(x.side==="sell"?Number(x.amount)-Number(x.fees):-(Number(x.amount)+Number(x.fees))),0);}
-  if(fb)sumHtml=wqHtml;
+  /* conta de investimento filtrada: operações e rendimentos (lançados em Investimentos) entram na lista, só para conferir */
+  let IVX=[],ivMore=false;
+  if(fi&&!ftr){
+    const ma=mAdd(m0,1),per=q=>mon?q.gte("date",m0).lt("date",ma):q.limit(S.lim);
+    const [ri,ro]=await Promise.all([
+      per(sb.from("investment_income").select("id,date,kind,net,tax_withheld,created_at,investment_assets!inner(account_id,name,ticker)").eq("investment_assets.account_id",S.fAcc).order("date",{ascending:false}).order("created_at",{ascending:false})),
+      per(sb.from("investment_operations").select("id,date,side,quantity,amount,fees,tax_withheld,net_balance_before,created_at,investment_assets!inner(account_id,name,ticker)").eq("investment_assets.account_id",S.fAcc).order("date",{ascending:false}).order("created_at",{ascending:false}))]);
+    const IK={juros:"Juros",dividendo:"Dividendo",jcp:"JCP",rendimento_fii:"Rendimento de FII",outros:"Outros"};
+    const an=x=>(x.investment_assets&&(x.investment_assets.ticker||x.investment_assets.name))||"";
+    (ro.data||[]).forEach(o=>{const am=Number(o.amount),fe=Number(o.fees||0),sell=o.side==="sell";
+      IVX.push({_k:"op",id:o.id,date:o.date,created_at:o.created_at,v:sell?am-fe:-(am+fe),
+        t:(sell?(o.net_balance_before!=null&&am<Number(o.net_balance_before)?"Resgate parcial":"Venda"):"Compra")+" · "+an(o),
+        d:[o.quantity?nq(o.quantity)+" un.":"",fe?"taxas "+mm(fe):"",Number(o.tax_withheld)?"IR retido "+mm(o.tax_withheld):""].filter(Boolean).join(" · ")});});
+    (ri.data||[]).forEach(i=>IVX.push({_k:"inc",id:i.id,date:i.date,created_at:i.created_at,v:Number(i.net),
+      t:"Rendimento · "+(IK[i.kind]||i.kind)+" · "+an(i),d:Number(i.tax_withheld)?"IR retido "+mm(i.tax_withheld):""}));
+    if(mon){iv.inc=IVX.filter(x=>x._k==="inc").reduce((r,x)=>r+x.v,0);iv.ops=IVX.filter(x=>x._k==="op").reduce((r,x)=>r+x.v,0);}
+    else ivMore=(ri.data||[]).length>=S.lim||(ro.data||[]).length>=S.lim;}
+  if(ftr){
+    const T=(tsm.data||[]).reduce((r,x)=>{const v=Number(x.amount)*Number(x.fx_rate_to_base||1);return v<0?{e:r.e-v,i:r.i}:{e:r.e,i:r.i+v};},{e:0,i:0});
+    sumHtml=`<b style="display:block;margin-top:10px">${esc(tripName(ftr.id))}</b>
+     ${tsm.error?`<p class="neg">${esc(tsm.error.message)}</p>`:`<div class="row"><span class="mu">Despesas</span><span class="neg">${tmoney(T.e)}</span></div>
+     ${T.i>0?`<div class="row"><span class="mu">Reembolsos</span><span class="pos">${tmoney(T.i)}</span></div>`:""}
+     <div class="row"><b>Custo ${mon||S.fAcc?"nos lançamentos filtrados":"da viagem"}</b><b>${tmoney(T.e-T.i)}</b></div>`}
+     <div class="mu">Em R$ (moeda estrangeira pelo custo médio). ${mon||S.fAcc?"Só o que passa nos filtros de período e conta; o custo total da viagem está na tela da viagem.":"Inclui parcelas futuras (previstas)."}</div>
+     <button class="sec" id="gtp">✈️ Abrir a viagem</button>`;}
+  else if(fb)sumHtml=wqHtml;
   else if(fi&&mon)sumHtml=`<div class="row"><span class="mu">Saldo do mês anterior${prevOk?"":" (sem fechamento)"}</span><span class="${sc(prev)}">${mm(prev)}</span></div>
     <div class="row"><span class="mu">Rendimentos do mês</span><span class="pos">${mm(iv.inc)}</span></div>
     <div class="row"><span class="mu">Compras e vendas de ativos</span><span class="${sc(iv.ops)}">${mm(iv.ops)}</span></div>
     <div class="row"><span class="mu">Aportes (transferências de entrada)</span><span class="pos">${mm(tr.inn)}</span></div>
     <div class="row"><span class="mu">Resgates (transferências de saída)</span><span class="neg">${mm(tr.out)}</span></div>
-    <div class="row"><b>Saldo final</b><b class="${sc(prev+tot+iv.inc+iv.ops)}">${mm(prev+tot+iv.inc+iv.ops)}</b></div><div class="mu">Saldo do mês anterior + rendimentos + compras e vendas + aportes e resgates. Rendimentos e operações são lançados em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;
-  else if(fi)sumHtml=`<div class="mu">Conta de investimento: aqui ficam só aportes e resgates (transferências). Compras, vendas e rendimentos estão em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;
+    <div class="row"><b>Saldo final</b><b class="${sc(prev+tot+iv.inc+iv.ops)}">${mm(prev+tot+iv.inc+iv.ops)}</b></div><div class="mu">Saldo do mês anterior + rendimentos + compras e vendas + aportes e resgates. Operações e rendimentos aparecem na lista abaixo, marcados; são lançados e apagados em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;
+  else if(fi)sumHtml=`<div class="mu">Conta de investimento: a lista mostra os aportes e resgates (transferências) e também as compras, vendas e rendimentos, que são lançados e apagados em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;
   else if(mon&&fc)sumHtml=`<div class="row"><b>Total da fatura</b><b>${mm(-(ent[0]+ent[1]))}</b></div><div class="mu">Compras da fatura, sem os pagamentos.</div>`;
   else if(mon&&S.fAcc)sumHtml=`<div class="row"><span class="mu">Saldo do mês anterior${prevOk?"":prevCalc?" (calculado)":" (sem fechamento)"}</span><span class="${sc(prev)}">${mm(prev)}</span></div>
     <div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div>
@@ -209,28 +267,49 @@ async function viewList(){
     ${Object.keys(tr.cards).map(id=>`<div class="row" style="padding-left:14px"><span class="mu">${esc(S.accounts.find(a=>a.id===id).name)}</span><span class="${sc(tr.cards[id])}">${mm(tr.cards[id])}</span></div>`).join("")}
     <div class="row"><span class="mu">Transferências de entrada</span><span class="pos">${mm(tr.inn)}</span></div>
     <div class="row"><span class="mu">Transferências de saída</span><span class="neg">${mm(tr.out)}</span></div>
-    <div class="row"><b>Saldo final</b><b class="${sc(tot+prev)}">${mm(tot+prev)}</b></div><div class="mu">Saldo do mês anterior + receitas + despesas + cartões + transferências.</div>`;
+    <div class="row"><b>Saldo final</b><b class="${sc(tot+prev)}">${mm(tot+prev)}</b></div>${finB!=null&&!isNaN(finB)?`<div class="mu" style="text-align:right">≈ ${fmt(finB,"BRL")} em reais, pelo custo médio</div>`:""}<div class="mu">Saldo do mês anterior + receitas + despesas + cartões + transferências.</div>`;
   else if(mon)sumHtml=`<b style="display:block;margin-top:10px">Resultado do mês</b><div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div><div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div><div class="row"><b>Resultado</b><b class="${sc(ent[0]+ent[1])}">${mm(ent[0]+ent[1])}</b></div><div class="mu">Receitas, despesas e resultado não incluem transferências.</div><div class="seg" style="margin-top:8px"><button id="cmf" class="${cm()==="stm"?"on":""}">Cartão: pela fatura</button><button id="cmb" class="${cm()==="buy"?"on":""}">Cartão: pela compra</button></div><div class="mu">${cm()==="stm"?"Compras no cartão contam no mês da fatura (vencimento), como no extrato. Transferências sempre pela data.":"Compras no cartão contam na data da compra."}</div>${qdHtml}`;
   const rowH=t=>`<div class="row"><div>
     <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
     <div class="mu">${t.date.split("-").reverse().join("/")} · ${esc(t.categories?.name||"—")} · ${esc(t.accounts?.name)}${t.statement_month&&S.accounts.some(a=>a.id===t.account_id&&a.type==="credit_card")?" · fatura "+t.statement_month.slice(5,7)+"/"+t.statement_month.slice(0,4):""}${t.card_holder_id&&holdersOf(t.account_id).length>1?" · "+esc(holderName(t.card_holder_id)):""}${t.wallet_id?" · "+esc(walletName(t.wallet_id)):""}${t.trip_id&&tripName(t.trip_id)?" · "+esc(tripName(t.trip_id)):""}${t.currency.trim()!=="BRL"?" · ≈ "+fmt(Number(t.amount)*Number(t.fx_rate_to_base||1),"BRL"):""}${t.original_amount?" · original "+fmt(t.original_amount,t.original_currency):""}${t.status==="planned"&&t.date>today()?" · previsto":""}</div></div>
     <div style="text-align:right;white-space:nowrap"><span class="${t.amount<0?"neg":"pos"}">${fmt(t.amount,t.currency)}</span><button class="x" data-ed="${t.id}">✏️</button><button class="x" data-del="${t.id}">✕</button></div></div>`;
+  const rowI=x=>`<div class="row"><div><div>${esc(x.t)}</div><div class="mu">${fdt(x.date)} · ${x._k==="op"?"operação":"rendimento"}${x.d?" · "+esc(x.d):""}</div></div>
+    <div style="text-align:right;white-space:nowrap"><span class="${x.v<0?"neg":"pos"}">${mm(x.v)}</span><button class="x" data-gi="1" title="Abrir Investimentos">📈</button></div></div>`;
+  /* lista da conta de investimento: lançamentos + operações + rendimentos, por data (no Tudo, até o limite) */
+  const LIST=IVX.length?(()=>{const M=data.concat(IVX).sort((a,b)=>b.date.localeCompare(a.date)||String(b.created_at||"").localeCompare(String(a.created_at||"")));return mon?M:M.slice(0,S.lim);})():data;
   const listHtml=()=>{
-    if(!grp)return data.map(rowH).join("");
+    if(!grp)return LIST.map(x=>x._k?rowI(x):rowH(x)).join("");
     const G={};data.forEach(t=>{(G[t.account_id]=G[t.account_id]||[]).push(t);});
-    const full=data.length<(mon?Math.max(S.lim,500):S.lim),ord=S.accounts.map(a=>a.id).filter(id=>G[id]).concat(Object.keys(G).filter(id=>!S.accounts.some(a=>a.id===id)));
-    return ord.map(id=>{const L=G[id],a=S.accounts.find(x=>x.id===id),nm=a?a.name:(L[0].accounts&&L[0].accounts.name)||"Conta",tot=L.reduce((r,x)=>r+Number(x.amount)*Number(x.fx_rate_to_base||1),0);
-      return `<div class="row" style="margin-top:10px;border-bottom:2px solid var(--ac)"><b>${esc(nm)} <span class="mu">· ${L.length} lanç.</span></b>${full?`<b class="${tot<0?"neg":"pos"}">${mm(tot)}</b>`:""}</div>`+L.map(rowH).join("");}).join("");};
+    const full=data.length<(mon?Math.max(S.lim,500):S.lim);
+    /* no Mês com Todas as contas: saldo final do mês (corrente, dinheiro e vale) ou fatura (cartão); contas com saldo e sem lançamento no mês também aparecem */
+    const mesN=MESES[+m0.slice(5,7)-1],proj=m0>=today().slice(0,8)+"01",finA=id=>ACCF[id]?ACCF[id].prev+ACCF[id].mov:null;
+    const temSaldo=id=>(finA(id)!==null&&Math.abs(finA(id))>=0.005)||(WALF[id]&&WALF[id].rows.length>0);
+    const ord=S.accounts.map(a=>a.id).filter(id=>G[id]||(all0&&temSaldo(id))).concat(Object.keys(G).filter(id=>!S.accounts.some(a=>a.id===id)));
+    const head=(id,L)=>{const a=S.accounts.find(x=>x.id===id)||{},nm=a.name||(L[0]&&L[0].accounts&&L[0].accounts.name)||"Conta",tot=L.reduce((r,x)=>r+Number(x.amount)*Number(x.fx_rate_to_base||1),0);
+      const n=`<b>${esc(nm)}</b> <span class="mu">· ${L.length} lanç.</span>`;let sub="",val="";
+      if(all0&&ACCF[id]){const A=ACCF[id],f=A.prev+A.mov;
+        sub=`${proj?"Saldo final projetado":"Saldo final"} de ${mesN} · anterior ${fmt(A.prev,A.cur)} · movimento ${fmt(A.mov,A.cur)}`;val=`<b class="${sc(f)}">${fmt(f,A.cur)}</b>`;}
+      else if(all0&&WALF[id]){const W=WALF[id],cu=a.currency.trim();
+        sub=`${proj?"Saldo final projetado":"Saldo final"} de ${mesN} (todas as carteiras)`+W.rows.map(r=>`<div>${esc(r.w.name)}${r.w.is_active?"":" (inativa)"}: <b class="${sc(r.f)}">${fmt(r.f,cu)}</b> <span>(anterior ${fmt(r.p,cu)}${r.hasC?"":", calculado"} · créditos ${fmt(r.i,cu)} · gastos ${fmt(r.e,cu)})</span></div>`).join("");
+        val=`<b class="${sc(W.T.f)}">${fmt(W.T.f,cu)}</b>`;}
+      else if(all0&&a.type==="credit_card"&&CARDF[id]!==undefined){sub=`${cm()==="stm"?"Fatura":"Compras"} de ${mesN}, sem os pagamentos`;val=`<b>${mm(CARDF[id])}</b>`;}
+      else if(full){sub=all0?"Movimento do mês":"";val=`<b class="${tot<0?"neg":"pos"}">${mm(tot)}</b>`;}
+      return `<div class="row" style="margin-top:10px;border-bottom:2px solid var(--ac)"><div>${n}${sub?`<div class="mu">${sub}</div>`:""}</div>${val}</div>`;};
+    return ord.map(id=>{const L=G[id]||[];return head(id,L)+(L.length?L.map(rowH).join(""):'<div class="mu" style="padding:6px 0">Sem lançamentos neste mês.</div>');}).join("");};
   $("main").innerHTML=`<div class="card"><div class="seg"><button id="lpm" class="${mon?"on":""}">Mês</button><button id="lpa" class="${mon?"":"on"}">Tudo</button></div>
     ${mon?`<div class="row" style="align-items:center"><button class="x" id="lpp">‹</button><b>${fc?"Fatura de ":""}${mlab(m0)}</b><button class="x" id="lpn">›</button></div>`:""}
     <label style="margin-top:0">Conta<select id="lfa"><option value="">Todas as contas</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.fAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
     ${wchips}
+    ${tripsOf().length?`<label>Viagem ou passeio<select id="lft"><option value="">Todas (sem filtro de viagem)</option>${tripsOf().map(t=>`<option value="${t.id}" ${ftr&&t.id===ftr.id?"selected":""}>${TRIP_ICON[t.kind]} ${esc(t.name)} · ${tripPeriod(t)}</option>`).join("")}</select></label>`:""}
     ${S.fAcc?"":`<div class="seg" style="margin-top:8px"><button id="lgd" class="${grp?"":"on"}">Por data</button><button id="lga" class="${grp?"on":""}">Agrupar por conta</button></div>${grp&&!mon?'<div class="mu">Em "Tudo", o total de cada conta só aparece quando todos os lançamentos estão carregados.</div>':""}`}
     ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}${sumHtml}</div>
-  <div class="card">${data.length?listHtml():`<span class="mu">${S.fAcc?"Nenhum lançamento nesta conta.":"Nenhum lançamento ainda."}</span>`}</div>
-  ${data.length>=(grp&&mon?Math.max(S.lim,500):S.lim)?'<button class="sec" id="lm">Carregar mais</button>':""}`;
+  <div class="card">${LIST.length?listHtml():`<span class="mu">${ftr?"Nenhum lançamento desta viagem com esses filtros.":S.fAcc?"Nenhum lançamento nesta conta.":"Nenhum lançamento ainda."}</span>`}</div>
+  ${data.length>=(grp&&mon?Math.max(S.lim,500):S.lim)||ivMore?'<button class="sec" id="lm">Carregar mais</button>':""}`;
   if($("gti"))$("gti").onclick=()=>{S.im="";go("inv");};
+  document.querySelectorAll("[data-gi]").forEach(b=>b.onclick=()=>{S.im="";go("inv");});
   if($("lm"))$("lm").onclick=async()=>{const y=window.scrollY;S.lim+=50;await viewList();window.scrollTo(0,y);};
+  if($("lft"))$("lft").onchange=()=>{S.fTrip=$("lft").value||null;if(S.fTrip)S.lper="all";S.lim=50;viewList();};
+  if($("gtp"))$("gtp").onclick=()=>{S.tripId=ftr.id;go("trip");};
   $("lfa").onchange=()=>{S.fAcc=$("lfa").value||null;S.fWal=null;S.lim=50;viewList();};
   document.querySelectorAll("[data-fw]").forEach(b=>b.onclick=()=>{S.fWal=b.dataset.fw||null;S.lim=50;viewList();});
   if($("lgd")){$("lgd").onclick=()=>{lsSet("listgrp","date");S.lim=50;viewList();};$("lga").onclick=()=>{lsSet("listgrp","acc");S.lim=50;viewList();};}

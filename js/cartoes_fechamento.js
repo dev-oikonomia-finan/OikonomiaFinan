@@ -77,7 +77,7 @@ async function viewClo(msg){
    ${done?`<p class="pos">Fechado ✓</p><div class="row"><span>${card?"Total da fatura":"Saldo"} (app)</span><span>${fmt(done.calculated_balance,cur)}</span></div><div class="row"><span>Informado (extrato)</span><span>${fmt(done.reported_balance,cur)}</span></div><div class="mu">${dif(done.reported_balance-done.calculated_balance)}</div>${wcHtml(done)}`
    :`<div class="row"><span>${card?"Total da fatura no app":"Saldo no app, no fim do mês"}</span><b>${fmt(cv,cur)}</b></div>
    ${wl.length?wl.map(w=>`<label>${esc(w.name)} <span class="mu">(app ${fmt(w.balance,cur)})</span><input class="cw" data-w="${w.wallet_id}" data-a="${w.balance}" inputmode="decimal" placeholder="0,00"><span class="mu" id="cwd${w.wallet_id}"></span></label>`).join("")+`<label>Total no extrato (soma das carteiras)<input id="cv" readonly></label>`:`<label>${card?"Total da fatura no banco":"Saldo no extrato do banco"}<input id="cv" inputmode="decimal" placeholder="0,00"></label>`}
-   <p id="cd" class="mu"></p><button class="pri" id="cs">Fechar ${esc(mlab(m))}</button>
+   <p id="ccmp" class="mu"></p><button class="pri" id="cs">Fechar ${esc(mlab(m))}</button>
    <p class="mu">Fechar congela os lançamentos até este mês${card?" (por fatura)":""}. Para corrigir depois, reabra o último fechamento.</p>`}
    <p id="cm" class="${msg?"pos":"neg"}">${esc(msg||"")}</p></div>
   <div class="card"><b>Fechamentos</b>${cl.length?cl.map((c,i)=>`<div class="row"><div>${mlab(c.ref_month)}<div class="mu">${fmt(c.reported_balance,cur)} · ${dif(c.reported_balance-c.calculated_balance)}</div>${acc.type==="benefit"?`<details><summary>Por carteira</summary>${wcHtml(c)}</details>`:""}</div>${i===0?`<button class="x" data-ro="${c.id}">Reabrir</button>`:""}</div>`).join(""):'<p class="mu">Nenhum fechamento nesta conta.</p>'}</div>`;
@@ -85,7 +85,7 @@ async function viewClo(msg){
   $("bk").onclick=()=>go("acc");
   $("ca").onchange=()=>{S.cloAcc=$("ca").value;S.cloMon=null;viewClo();};
   $("cp").onclick=()=>{S.cloMon=mAdd(m,-1);viewClo();};$("cn").onclick=()=>{S.cloMon=mAdd(m,1);viewClo();};
-  if($("cv"))$("cv").oninput=()=>{const v=num($("cv").value);$("cd").textContent=isNaN(v)?"":"Comparação: "+dif(v-cv);};
+  if($("cv"))$("cv").oninput=()=>{const v=num($("cv").value);$("ccmp").textContent=isNaN(v)?"":"Comparação: "+dif(v-cv);};
   document.querySelectorAll(".cw").forEach(i=>i.oninput=()=>{
     const all=[...document.querySelectorAll(".cw")];
     all.forEach(x=>{const e=document.getElementById("cwd"+x.dataset.w),v=num(x.value);e.textContent=x.value.trim()&&!isNaN(v)?" "+dif(v-Number(x.dataset.a)):"";});

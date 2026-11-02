@@ -2,11 +2,14 @@
 const mm=v=>fmt(Number(v)||0,"BRL");
 async function viewDash(){
   $("main").innerHTML='<div class="card mu">Carregando…</div>';
-  const ano=today().slice(0,4),hid=S.hid,pr=dper(),stmM=cm()==="stm",nm0=mAdd(today().slice(0,8)+"01",1);
+  /* Resultado: Mês e Ano navegáveis (S.dmon = 1º dia do mês escolhido; S.dyear = ano); começam no mês e no ano atuais */
+  const curM=today().slice(0,8)+"01";if(!S.dmon)S.dmon=curM;if(!S.dyear)S.dyear=+today().slice(0,4);
+  const pr=S.dper==="mon"?[S.dmon,mAdd(S.dmon,1)]:S.dper==="year"?[S.dyear+"-01-01",(S.dyear+1)+"-01-01"]:dper();
+  const ano=today().slice(0,4),hid=S.hid,stmM=cm()==="stm",nm0=mAdd(today().slice(0,8)+"01",1);
   /* seções de metas: pela fatura, mostra também o mês seguinte (e, em dezembro, o ano seguinte), que já recebe o cartão depois do fechamento */
   const SEC=[{p:"weekly",ref:today()},{p:"monthly",ref:today()},...(stmM?[{p:"monthly",ref:nm0,nx:true}]:[]),{p:"yearly",ref:today()},...(stmM&&today().slice(5,7)==="12"?[{p:"yearly",ref:(+ano+1)+"-01-01",nx:true}]:[])];
   const [bl,un,lp,lm,rs,ip,...ps]=await Promise.all([
-    (async()=>{const [a,i]=await Promise.all([sb.from("account_balances").select("account_id,type,balance_base").eq("household_id",hid),sb.from("investment_account_summary").select("account_id,in_assets,cash").eq("household_id",hid)]);if(!a.error&&!i.error){a.invSum=i.data||[];const m={};(i.data||[]).forEach(x=>{m[x.account_id]=Number(x.in_assets)||0;});(a.data||[]).forEach(x=>{x.balance_base=Number(x.balance_base||0)+(m[x.account_id]||0);});}return a;})(),
+    (async()=>{const [a,i]=await Promise.all([sb.from("account_balances").select("account_id,type,currency,balance,balance_base").eq("household_id",hid),sb.from("investment_account_summary").select("account_id,in_assets,cash").eq("household_id",hid)]);if(!a.error&&!i.error){a.invSum=i.data||[];const m={};(i.data||[]).forEach(x=>{m[x.account_id]=Number(x.in_assets)||0;});(a.data||[]).forEach(x=>{x.balance_base=Number(x.balance_base||0)+(m[x.account_id]||0);});}return a;})(),
     sb.from("transactions").select("amount,fx_rate_to_base").eq("household_id",hid).is("category_id",null).is("transfer_group_id",null).lt("amount",0).gte("date",ano+"-01-01").lte("date",ano+"-12-31"),
     sb.from("loan_progress").select("*").eq("household_id",hid).eq("is_active",true).order("name"),
     sb.from("loan_monthly_commitment").select("month,amount").eq("household_id",hid),
@@ -18,6 +21,9 @@ async function viewDash(){
   if(err){$("main").innerHTML=`<div class="card neg">${esc(err.error.message)}</div>`;return;}
   const B=(bl.data||[]).filter(a=>S.accounts.some(x=>x.id===a.account_id)),sum=f=>B.filter(f).reduce((t,a)=>t+Number(a.balance_base||0),0);
   const geral=sum(()=>true),disp=sum(a=>["checking","cash"].includes(a.type)),cart=sum(a=>a.type==="credit_card"),ben=sum(a=>a.type==="benefit"),demais=geral-disp-cart-ben;
+  /* Disponível separado: contas em reais e contas em moeda estrangeira (em R$ pelo custo médio); o Saldo geral soma tudo */
+  const isDisp=a=>["checking","cash"].includes(a.type),cuOf=a=>String(a.currency||"BRL").trim(),dispR=sum(a=>isDisp(a)&&cuOf(a)==="BRL"),dispF=disp-dispR,FX={};
+  B.filter(a=>isDisp(a)&&cuOf(a)!=="BRL").forEach(a=>{const c=cuOf(a),o=FX[c]=FX[c]||{q:0,b:0};o.q+=Number(a.balance||0);o.b+=Number(a.balance_base||0);});
   const IA=S.accounts.filter(a=>a.type==="investment"),iok=id=>IA.some(a=>a.id===id),
     cashI=(bl.invSum||[]).filter(x=>iok(x.account_id)).reduce((t,x)=>t+Number(x.cash||0),0),icl={};
   (ip.data||[]).filter(p=>p.is_active&&iok(p.account_id)&&Number(p.qty)>0).forEach(p=>{icl[p.class]=(icl[p.class]||0)+Number(p.current_value||0);});
@@ -52,11 +58,15 @@ async function viewDash(){
     ${mk.length?`<details><summary>Parcelas por mês (todos os contratos)</summary>${mk.map(k=>`<div class="row"><span>${mlab(k)}</span><b>${mm(LM[k])}</b></div>`).join("")}<div class="mu">Soma as parcelas do mês, pagas e previstas. Valores futuros são estimativas.</div></details>`:""}</div>`:"";
   const RS=(rs.data&&rs.data[0])||null,inc=RS?Number(RS.income):0,exp=RS?Number(RS.expense):0,PL={mon:"Mês",year:"Ano",all:"Tudo",cus:"Período"};
   const perHtml=`<div class="card"><b>Resultado do período</b><div class="chips" style="margin-top:8px">${Object.keys(PL).map(k=>`<button data-dp="${k}" class="${S.dper===k?"on":""}">${PL[k]}</button>`).join("")}</div>
-   ${S.dper==="cus"?`<div style="display:flex;gap:8px"><label style="flex:1">De<input type="date" id="pdf" value="${S.dfrom||""}"></label><label style="flex:1">Até<input type="date" id="pdt" value="${S.dto||""}"></label></div>${S.dfrom&&S.dto?"":'<p class="mu">Informe as duas datas (por enquanto mostra o mês atual).</p>'}`:""}
+   ${S.dper==="mon"?`<div class="row" style="align-items:center"><button class="x" id="pmp">‹</button><b>${new Date(S.dmon+"T12:00:00").toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}</b><button class="x" id="pmn">›</button></div>${S.dmon!==curM?'<button class="lk" id="pm0">Voltar ao mês atual</button>':""}`:""}
+   ${S.dper==="year"?`<div class="row" style="align-items:center"><button class="x" id="pyp">‹</button><b>${S.dyear}</b><button class="x" id="pyn">›</button></div>${S.dyear!==+ano?'<button class="lk" id="py0">Voltar ao ano atual</button>':""}`:""}
+   ${S.dper==="cus"?`<div style="display:flex;gap:8px"><label style="flex:1">De<input type="date" id="pdf" value="${S.dfrom||""}"></label><label style="flex:1">Até<input type="date" id="pdt" value="${S.dto||""}"></label></div><p id="pdm" class="neg"></p>${S.dfrom&&S.dto?"":'<p class="mu">Informe as duas datas (por enquanto mostra o mês atual).</p>'}`:""}
    ${rs.error?`<p class="neg">${esc(rs.error.message)}</p><p class="mu">Rode o script cartao_partida.sql no Supabase.</p>`:`<div class="row"><span>Receitas</span><span class="pos">${mm(inc)}</span></div><div class="row"><span>Despesas</span><span class="neg">${mm(exp)}</span></div><div class="row"><b>Resultado</b><b class="${inc+exp<0?"neg":"pos"}">${mm(inc+exp)}</b></div><div class="seg" style="margin-top:8px"><button data-cm="stm" class="${cm()==="stm"?"on":""}">Cartão: pela fatura</button><button data-cm="buy" class="${cm()==="buy"?"on":""}">Cartão: pela compra</button></div><div class="mu">Sem transferências. ${cm()==="stm"?"Compras no cartão contam no mês da fatura (vencimento).":"Compras no cartão contam pela data da compra."} ${cm()==="stm"?"As metas mensais e anuais também contam o cartão pela fatura; a semanal, pela data da compra.":"As metas abaixo também contam pela data da compra."}</div>`}</div>`;
   $("main").innerHTML=`<div class="card"><div class="mu">Saldo geral</div>
     <div style="font-size:1.6rem;font-weight:700" class="${geral<0?"neg":"pos"}">${mm(geral)}</div>
-    <div class="row" style="margin-top:8px"><span>Disponível (corrente e dinheiro)</span><span class="${disp<0?"neg":""}">${mm(disp)}</span></div>
+    ${Object.keys(FX).length?`<div class="row" style="margin-top:8px"><span>Disponível em reais (corrente e dinheiro)</span><span class="${dispR<0?"neg":""}">${mm(dispR)}</span></div>
+    <div class="row"><span>Disponível em moeda estrangeira<span class="mu" style="display:block">${Object.keys(FX).sort().map(c=>fmt(FX[c].q,c)).join(" · ")} · em R$ pelo custo médio</span></span><span class="${dispF<0?"neg":""}">${mm(dispF)}</span></div>`
+    :`<div class="row" style="margin-top:8px"><span>Disponível (corrente e dinheiro)</span><span class="${disp<0?"neg":""}">${mm(disp)}</span></div>`}
     <div class="row"><span>Cartões (dívida atual)</span><span class="${cart<0?"neg":""}">${mm(cart)}</span></div>
     ${B.some(a=>a.type==="benefit")?`<div class="row"><span>Benefícios (vales)</span><span class="${ben<0?"neg":""}">${mm(ben)}</span></div>`:""}
     <div class="row"><span>Demais contas</span><span class="${demais<0?"neg":""}">${mm(demais)}</span></div></div>
@@ -70,7 +80,21 @@ async function viewDash(){
   $("gm").onclick=()=>go("metas");
   document.querySelectorAll("[data-cm]").forEach(b=>b.onclick=()=>{lsSet("cardmode",b.dataset.cm);viewDash();});
   document.querySelectorAll("[data-dp]").forEach(b=>b.onclick=()=>{S.dper=b.dataset.dp;viewDash();});
-  if($("pdf")){$("pdf").onchange=()=>{S.dfrom=$("pdf").value;viewDash();};$("pdt").onchange=()=>{S.dto=$("pdt").value;viewDash();};}
+  const pnav=(id,f)=>{if($(id))$(id).onclick=()=>{f();viewDash();};};
+  pnav("pmp",()=>{S.dmon=mAdd(S.dmon,-1);});pnav("pmn",()=>{S.dmon=mAdd(S.dmon,1);});pnav("pm0",()=>{S.dmon=curM;});
+  pnav("pyp",()=>{S.dyear--;});pnav("pyn",()=>{S.dyear++;});pnav("py0",()=>{S.dyear=+ano;});
+  /* De/Até do período: só recarrega com data completa e ano entre 1900 e 2100, após 1 s sem digitar ou ao sair do campo (antes recarregava a cada dígito e o ano ficava preso) */
+  if($("pdf")){
+    const okD=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&+v.slice(0,4)>=1900&&+v.slice(0,4)<=2100;
+    let tm=null;
+    const apply=()=>{clearTimeout(tm);const f=$("pdf").value,t=$("pdt").value;
+      if((f&&!okD(f))||(t&&!okD(t))){$("pdm").textContent="Data incompleta ou ano fora de 1900 a 2100.";return;}
+      if(f&&t&&t<f){$("pdm").textContent='"Até" não pode ser antes de "De".';return;}
+      $("pdm").textContent="";
+      if(f===(S.dfrom||"")&&t===(S.dto||""))return;
+      S.dfrom=f||null;S.dto=t||null;viewDash();};
+    ["pdf","pdt"].forEach(i=>{const el=$(i);el.oninput=el.onchange=()=>{clearTimeout(tm);tm=setTimeout(apply,1000);};el.onblur=apply;
+      el.onkeydown=e=>{if(e.key==="Enter")apply();};});}
   $("gl").onclick=()=>go("loans");
   if($("gi"))$("gi").onclick=()=>go("inv");
   if($("gu"))$("gu").onclick=()=>{S.lim=50;S.lper="all";go("list");};
