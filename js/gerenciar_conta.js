@@ -33,6 +33,7 @@ async function viewAcm(){
    <button class="sec neg" id="ai">Inativar conta</button><p id="am" class="neg"></p>
    <p class="mu">Inativar esconde a conta das telas e do saldo geral; os lançamentos ficam guardados e você pode reativar em Contas. Só é possível com saldo zerado${a.type==="credit_card"?" (cartão sem dívida)":""}.</p></div>`;
   if(a.type==="benefit"){await loadWallets();if(S.tab!=="acm")return;drawWal(a,WALMSG);WALMSG="";}
+  if(a.type==="pension"||a.type==="fgts"){await drawParts(a,PARTMSG);PARTMSG="";if(S.tab!=="acm")return;}
   const say=t=>{$("am").textContent=t;};
   $("bk").onclick=()=>go("acc");
   $("as").onclick=async()=>{const n=$("an2").value.trim();
@@ -78,6 +79,63 @@ async function viewAcm(){
     const {error}=await sb.from("accounts").update({is_active:false}).eq("id",a.id);
     if(error)return say("Erro: "+error.message);
     S.acmId=null;await loadRef();go("acc");};
+}
+
+/* ===== Partes de Previdência e FGTS (03/11/2026): saldo informado por data, sem lançamentos ===== */
+let PARTMSG="";
+async function drawParts(a,m){
+  const [pr,br]=await Promise.all([sb.from("account_parts").select("id,name,only_dismissal,is_active,created_at").eq("account_id",a.id).order("created_at"),
+    sb.from("account_part_balances").select("id,part_id,date,value").eq("household_id",S.hid).order("date",{ascending:false}).limit(2000)]);
+  if(S.tab!=="acm")return;
+  const el=document.createElement("div");el.className="card";el.id="pcard";$("main").appendChild(el);
+  if(pr.error){el.innerHTML=`<b>Partes da conta</b><p class="neg">${esc(pr.error.message)}</p><p class="mu">Se a tabela não existe, rode o script previdencia_partes.sql no Supabase.</p>`;return;}
+  const P=pr.data||[],act=P.filter(p=>p.is_active),ina=P.filter(p=>!p.is_active),ids=new Set(P.map(p=>p.id)),BAL=(br.data||[]).filter(b=>ids.has(b.part_id)),hj=today();
+  const last=id=>BAL.find(b=>b.part_id===id&&b.date<=hj)||null;
+  const pm=today().slice(0,8)+"01",dDef=(()=>{const e=new Date(pm+"T12:00:00");e.setDate(e.getDate()-1);return e.getFullYear()+"-"+String(e.getMonth()+1).padStart(2,"0")+"-"+String(e.getDate()).padStart(2,"0");})();
+  const valOn=(id,d)=>{const b=BAL.find(x=>x.part_id===id&&x.date===d)||BAL.find(x=>x.part_id===id&&x.date<=d);return b?fa(b.value):"";};
+  const dates=[...new Set(BAL.map(b=>b.date))].sort().reverse();
+  const fgts=a.type==="fgts",ex=fgts?"Ex.: Saldo FGTS, Multa estimada (40%)":"Ex.: Participante, Empresa";
+  el.innerHTML=`<b>Partes da conta</b><div class="mu">O saldo da conta é a soma do último saldo informado de cada parte ativa (datas futuras não contam). Atualize no fim do mês com o extrato; não vira receita nem lançamento. Resgatável = o que você leva em qualquer saída (ex.: Participante); potencial = o que depende da forma de saída (ex.: Empresa, FGTS, multa estimada).</div>
+    ${act.map(p=>{const l=last(p.id);return `<div style="padding:10px 0;border-bottom:1px solid var(--bd)"><div class="row" style="border:0;padding:0"><input data-pn="${p.id}" value="${esc(p.name)}"><b style="white-space:nowrap;margin-left:8px;align-self:center">${mm(l?l.value:0)}</b></div>
+      <div class="row" style="border:0;padding:4px 0 0"><label class="ck" style="margin:0"><input type="checkbox" data-pd="${p.id}" ${p.only_dismissal?"checked":""}> Valor potencial</label><span class="mu">${l?"em "+fdt(l.date):"sem saldo informado"}</span></div>
+      <div style="text-align:right"><button class="x" data-pi="${p.id}">Inativar</button></div></div>`;}).join("")||'<p class="mu">Nenhuma parte ainda. Sem partes, a conta usa os lançamentos, como as demais.</p>'}
+    <b style="display:block;margin-top:14px">Nova parte</b>
+    <label>Nome<input id="pnn" placeholder="${ex}"></label>
+    <label class="ck"><input type="checkbox" id="pnd"> Valor potencial</label>
+    <button class="sec" id="padd">Adicionar parte</button>
+    ${act.length?`<b style="display:block;margin-top:14px">Atualizar saldos</b>
+    <label>Data do extrato<input type="date" id="pdt2" value="${dDef}"></label>
+    ${act.map(p=>`<label>${esc(p.name)}${p.only_dismissal?' <span class="mu">(potencial)</span>':' <span class="mu">(resgatável)</span>'}<input data-pv="${p.id}" inputmode="decimal" placeholder="0,00" value="${valOn(p.id,dDef)}"></label>`).join("")}
+    <p id="ptot" class="mu"></p><button class="pri" id="psave">Salvar saldos</button>`:""}
+    <p id="pmsg" class="${m?"pos":"neg"}">${esc(m||"")}</p>
+    ${dates.length?`<details><summary>Histórico (${dates.length} data${dates.length>1?"s":""})</summary>${dates.slice(0,36).map(d=>{const L=BAL.filter(b=>b.date===d),t=L.reduce((x,b)=>x+Number(b.value),0);
+      return `<div class="row"><div><b>${fdt(d)}</b><div class="mu">${L.map(b=>esc((P.find(p=>p.id===b.part_id)||{}).name||"Parte")+" "+mm(b.value)).join(" · ")}</div></div><div style="white-space:nowrap">${mm(t)}<button class="x" data-ph="${d}" title="Apagar os saldos desta data">✕</button></div></div>`;}).join("")}</details>`:""}
+    ${ina.length?`<details><summary>Partes inativas (${ina.length})</summary>${ina.map(p=>`<div class="row"><span>${esc(p.name)}</span><button class="x" data-pr="${p.id}">Reativar</button></div>`).join("")}</details>`:""}`;
+  const say=t=>{$("pmsg").className="neg";$("pmsg").textContent=t;};
+  const redo=async t=>{PARTMSG=t;await loadRef();viewAcm();};
+  const err=e=>e.message.includes("account_parts_name_uq")?"Já existe uma parte ativa com esse nome.":"Erro: "+e.message;
+  const tot=()=>{if(!$("ptot"))return;let t=0,o=0;document.querySelectorAll("[data-pv]").forEach(i=>{const v=num(i.value||"")||0,p=act.find(z=>z.id===i.dataset.pv);t+=v;if(p&&!p.only_dismissal)o+=v;});
+    $("ptot").textContent=`Total ${mm(t)} · resgatável ${mm(o)} · potencial ${mm(t-o)}`;};
+  document.querySelectorAll("[data-pv]").forEach(i=>i.oninput=tot);tot();
+  if($("pdt2"))$("pdt2").onchange=()=>{const d=$("pdt2").value;document.querySelectorAll("[data-pv]").forEach(i=>{i.value=valOn(i.dataset.pv,d);});tot();};
+  document.querySelectorAll("[data-pn]").forEach(i=>i.onchange=async()=>{const n=i.value.trim();if(!n)return say("Informe o nome da parte.");
+    const {error}=await sb.from("account_parts").update({name:n}).eq("id",i.dataset.pn);if(error)return say(err(error));redo("Nome salvo ✓");});
+  document.querySelectorAll("[data-pd]").forEach(i=>i.onchange=async()=>{const {error}=await sb.from("account_parts").update({only_dismissal:i.checked}).eq("id",i.dataset.pd);if(error)return say(err(error));redo("Parte atualizada ✓");});
+  document.querySelectorAll("[data-pi]").forEach(b=>b.onclick=async()=>{const l=last(b.dataset.pi);
+    if(!confirm(`Inativar esta parte?${l&&Number(l.value)?` O saldo dela (${mm(l.value)}) deixa de somar na conta.`:""} O histórico fica guardado.`))return;
+    const {error}=await sb.from("account_parts").update({is_active:false}).eq("id",b.dataset.pi);if(error)return say(err(error));redo("Parte inativada ✓");});
+  document.querySelectorAll("[data-pr]").forEach(b=>b.onclick=async()=>{const {error}=await sb.from("account_parts").update({is_active:true}).eq("id",b.dataset.pr);if(error)return say(err(error));redo("Parte reativada ✓");});
+  $("padd").onclick=async()=>{const n=$("pnn").value.trim();if(!n)return say("Informe o nome da parte.");
+    if(act.some(p=>p.name.trim().toLowerCase()===n.toLowerCase()))return say("Já existe uma parte ativa com esse nome.");
+    const {error}=await sb.from("account_parts").insert({household_id:S.hid,account_id:a.id,name:n,only_dismissal:$("pnd").checked});if(error)return say(err(error));redo("Parte criada ✓");};
+  if($("psave"))$("psave").onclick=async()=>{const d=$("pdt2").value;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||+d.slice(0,4)<1900)return say("Informe a data do extrato.");
+    const rows=[];let bad=false;document.querySelectorAll("[data-pv]").forEach(i=>{const s0=i.value.trim();if(!s0)return;const v=num(s0);if(!(v>=0)||Math.round(v*100)/100!==v)bad=true;else rows.push({household_id:S.hid,part_id:i.dataset.pv,date:d,value:v});});
+    if(bad)return say("Valor inválido (zero ou maior, até 2 casas).");if(!rows.length)return say("Informe o saldo de ao menos uma parte.");
+    $("psave").disabled=true;const {error}=await sb.from("account_part_balances").upsert(rows,{onConflict:"part_id,date"});
+    if(error){$("psave").disabled=false;return say(err(error));}redo(`Saldos de ${fdt(d)} salvos ✓`+(d>today()?" (data futura: só conta a partir dela)":""));};
+  document.querySelectorAll("[data-ph]").forEach(b=>b.onclick=async()=>{const d=b.dataset.ph;if(!confirm(`Apagar os saldos de ${fdt(d)} de todas as partes desta conta?`))return;
+    const {error}=await sb.from("account_part_balances").delete().eq("date",d).in("part_id",[...ids]);if(error)return say(err(error));redo("Saldos apagados ✓");});
 }
 
 let WALMSG="";

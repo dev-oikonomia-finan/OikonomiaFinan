@@ -1,12 +1,16 @@
 async function viewAcc(){
-  const [{data:bal},{data:h},{data:ina},{data:wbd}]=await Promise.all([
+  const [{data:bal},{data:h},{data:ina},{data:wbd},{data:pcd}]=await Promise.all([
     sb.from("account_balances").select("*").eq("household_id",S.hid).order("name"),
     sb.from("households").select("invite_code").eq("id",S.hid).single(),
     sb.from("accounts").select("id,name").eq("household_id",S.hid).eq("is_active",false).order("name"),
-    sb.from("wallet_balances").select("wallet_id,balance").eq("household_id",S.hid)]);
+    sb.from("wallet_balances").select("wallet_id,balance").eq("household_id",S.hid),
+    sb.from("account_part_current").select("part_id,account_id,name,only_dismissal,is_active,value,date").eq("household_id",S.hid)]);
+  /* partes de previdência e FGTS (último saldo informado) */
+  const pbk=a=>{const L=(pcd||[]).filter(x=>x.account_id===a.account_id&&x.is_active);if(!L.length)return "";
+    return `<div style="padding:0 0 8px 14px;border-bottom:1px solid var(--bd)">${L.map(x=>`<div class="row" style="border:0;padding:6px 0"><div>${esc(x.name)}<div class="mu">${x.only_dismissal?"potencial · ":"resgatável · "}${x.date?"em "+fdt(x.date):"sem saldo informado"}</div></div><div style="text-align:right">${fmt(x.value,"BRL")}</div></div>`).join("")}</div>`;};
   const WB={};(wbd||[]).forEach(r=>{WB[r.wallet_id]=Number(r.balance);});
   const wbk=a=>{const L=walletsOf(a.account_id);return `<div style="padding:0 0 8px 14px;border-bottom:1px solid var(--bd)">${L.length?L.map(w=>`<div class="row" style="border:0;padding:6px 0"><div>${esc(w.name)}<div class="mu">${w.expected_amount?"esperado "+fmt(w.expected_amount,a.currency)+" · ":""}${walWhen(w)}</div></div><div style="text-align:right">${fmt(WB[w.id]||0,a.currency)}<button class="x" data-cr="${w.id}">+ Crédito</button></div></div>`).join(""):'<div class="mu">Nenhuma carteira. Crie em ⚙ da conta.</div>'}</div>`;};
-  const rowH=(a,ind)=>`<div class="row"${ind?' style="padding-left:16px"':""}><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}<button class="x" data-mg="${a.account_id}">⚙</button>${a.currency.trim()!=="BRL"?`<div class="mu">≈ ${mm(a.balance_base)} em reais (custo)</div>`:""}${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Fatura</button></div>`:""}</div></div>${a.type==="benefit"?wbk(a):""}`;
+  const rowH=(a,ind)=>`<div class="row"${ind?' style="padding-left:16px"':""}><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}<button class="x" data-mg="${a.account_id}">⚙</button>${a.currency.trim()!=="BRL"?`<div class="mu">≈ ${mm(a.balance_base)} em reais (custo)</div>`:""}${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Fatura</button></div>`:""}</div></div>${a.type==="benefit"?wbk(a):""}${a.type==="pension"||a.type==="fgts"?pbk(a):""}`;
   const vis=(bal||[]).filter(a=>S.accounts.some(x=>x.id===a.account_id)),byAcc={};S.accounts.forEach(x=>{byAcc[x.id]=x;});
   let AL="";const seen={};
   vis.forEach(a=>{const ac=byAcc[a.account_id],g=gk(ac);

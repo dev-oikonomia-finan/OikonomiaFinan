@@ -28,21 +28,42 @@ async function viewDash(){
   const curM=today().slice(0,8)+"01";if(!S.dmon)S.dmon=curM;if(!S.dyear)S.dyear=+today().slice(0,4);
   const pr=S.dper==="mon"?[S.dmon,mAdd(S.dmon,1)]:S.dper==="year"?[S.dyear+"-01-01",(S.dyear+1)+"-01-01"]:dper();
   const ano=today().slice(0,4),hid=S.hid,stmM=cm()==="stm",nm0=mAdd(today().slice(0,8)+"01",1);
+  /* Situação do Painel: "hoje" (como sempre), "mes" (+ previstos até o fim do mês) ou "tudo" (+ todos os previstos); previdência e FGTS fora do saldo, salvo se marcado */
+  /* previdência e FGTS no saldo: "0" não incluir | "own" só o resgatável (partes não marcadas como potencial) | "all" resgatável + potencial (todas as partes) */
+  const sit=["mes","tudo"].includes(lsGet("dsit"))?lsGet("dsit"):"hoje";
+  /* 4 opções: show_own / show_all (só exibe, fora do Saldo geral) e own / all (exibe e soma); valores antigos: "1" = all, "0" = show_all */
+  const PVO={show_own:"Apenas exibir só o resgatável",show_all:"Apenas exibir resgatável + potencial",own:"Incluir só o resgatável",all:"Incluir resgatável + potencial"};
+  const pvr=lsGet("dprev")==="1"?"all":lsGet("dprev")==="0"?"show_all":(PVO[lsGet("dprev")]?lsGet("dprev"):"show_all");
+  const pvm=pvr.replace("show_",""),incPrev=!pvr.startsWith("show_"),isPrev=a=>["pension","fgts"].includes(a.type);
+  const fimMes=(()=>{const e=new Date(nm0+"T12:00:00");e.setDate(e.getDate()-1);return e.getFullYear()+"-"+String(e.getMonth()+1).padStart(2,"0")+"-"+String(e.getDate()).padStart(2,"0");})();
+  const futOk=S.accounts.filter(a=>incPrev||!isPrev(a)).map(a=>a.id);
   /* seções de metas: pela fatura, mostra também o mês seguinte (e, em dezembro, o ano seguinte), que já recebe o cartão depois do fechamento */
   const SEC=[{p:"weekly",ref:today()},{p:"monthly",ref:today()},...(stmM?[{p:"monthly",ref:nm0,nx:true}]:[]),{p:"yearly",ref:today()},...(stmM&&today().slice(5,7)==="12"?[{p:"yearly",ref:(+ano+1)+"-01-01",nx:true}]:[])];
-  const [bl,un,lp,lm,rs,ip,...ps]=await Promise.all([
+  const [bl,un,lp,lm,rs,ip,pq,fu,...ps]=await Promise.all([
     (async()=>{const [a,i]=await Promise.all([sb.from("account_balances").select("account_id,type,currency,balance,balance_base").eq("household_id",hid),sb.from("investment_account_summary").select("account_id,in_assets,cash").eq("household_id",hid)]);if(!a.error&&!i.error){a.invSum=i.data||[];const m={};(i.data||[]).forEach(x=>{m[x.account_id]=Number(x.in_assets)||0;});(a.data||[]).forEach(x=>{x.balance_base=Number(x.balance_base||0)+(m[x.account_id]||0);});}return a;})(),
     sb.from("transactions").select("amount,fx_rate_to_base").eq("household_id",hid).is("category_id",null).is("transfer_group_id",null).lt("amount",0).gte("date",ano+"-01-01").lte("date",ano+"-12-31"),
     sb.from("loan_progress").select("*").eq("household_id",hid).eq("is_active",true).order("name"),
     sb.from("loan_monthly_commitment").select("month,amount").eq("household_id",hid),
     sb.rpc("period_summary",{p_household:hid,p_from:pr[0],p_to:pr[1],p_card_mode:cm()}),
     sb.from("investment_positions").select("account_id,asset_id,name,ticker,class,qty,current_value,is_active").eq("household_id",hid),
+    sb.from("account_part_current").select("part_id,account_id,name,only_dismissal,is_active,value,date").eq("household_id",hid),
+    sit==="hoje"||!futOk.length?Promise.resolve({data:[]}):ddAll(()=>{let q=sb.from("transactions").select("id,date,amount,fx_rate_to_base,description,account_id,category_id,status,statement_month,installment_group_id,installment_number,installment_total,transfer_group_id").eq("household_id",hid).eq("status","planned").gt("date",today()).in("account_id",futOk);
+      if(sit==="mes")q=q.lte("date",fimMes);return q.order("date").order("id");}),
     ...SEC.map(x=>sb.rpc("budget_progress",{p_household:hid,p_ref:x.ref,p_period:x.p,p_card_mode:cm()}))]);
   if(S.tab!=="dash"||S.hid!==hid)return;
   const err=[bl,un,...ps].find(r=>r.error);
   if(err){$("main").innerHTML=`<div class="card neg">${esc(err.error.message)}</div>`;return;}
   const B=(bl.data||[]).filter(a=>S.accounts.some(x=>x.id===a.account_id)),sum=f=>B.filter(f).reduce((t,a)=>t+Number(a.balance_base||0),0);
-  const geral=sum(()=>true),disp=sum(a=>["checking","cash"].includes(a.type)),cart=sum(a=>a.type==="credit_card"),ben=sum(a=>a.type==="benefit"),demais=geral-disp-cart-ben;
+  /* valor de cada conta de previdência/FGTS no cenário: com partes, soma as partes que entram; sem partes, o saldo da conta (recebo sempre) */
+  const PQ=((pq&&pq.data)||[]).filter(x=>x.is_active),hasP=id=>PQ.some(x=>x.account_id===id);
+  const prevOf=(a,m)=>hasP(a.account_id)?PQ.filter(x=>x.account_id===a.account_id&&(m==="all"||!x.only_dismissal)).reduce((t,x)=>t+Number(x.value||0),0):Number(a.balance_base||0);
+  const prevAll=B.filter(isPrev).reduce((t,a)=>t+prevOf(a,"all"),0),prevOwn=B.filter(isPrev).reduce((t,a)=>t+prevOf(a,"own"),0),prevTot=pvm==="own"?prevOwn:prevAll;
+  const temPrev=B.some(isPrev),geral=sum(a=>!isPrev(a))+(incPrev?prevTot:0),disp=sum(a=>["checking","cash"].includes(a.type)),cart=sum(a=>a.type==="credit_card"),ben=sum(a=>a.type==="benefit"),demais=geral-disp-cart-ben-(incPrev?prevTot:0);
+  /* compromissos previstos (Fim do mês / Tudo) */
+  const loanG=new Set((S.loans||[]).map(l=>l.installment_group_id)),FU=(fu&&fu.data)||[],fv=t=>Number(t.amount)*Number(t.fx_rate_to_base||1);
+  const FG={card:FU.filter(t=>!t.transfer_group_id&&S.accounts.some(a=>a.id===t.account_id&&a.type==="credit_card")),loan:FU.filter(t=>t.installment_group_id&&loanG.has(t.installment_group_id))};
+  FG.out=FU.filter(t=>!FG.card.includes(t)&&!FG.loan.includes(t));
+  const fs=k=>FG[k].reduce((x,t)=>x+fv(t),0),futTot=fs("card")+fs("loan")+fs("out"),proj=geral+futTot;
   /* Disponível separado: contas em reais e contas em moeda estrangeira (em R$ pelo custo médio); o Saldo geral soma tudo */
   const isDisp=a=>["checking","cash"].includes(a.type),cuOf=a=>String(a.currency||"BRL").trim(),dispR=sum(a=>isDisp(a)&&cuOf(a)==="BRL"),dispF=disp-dispR,FX={};
   B.filter(a=>isDisp(a)&&cuOf(a)!=="BRL").forEach(a=>{const c=cuOf(a),o=FX[c]=FX[c]||{q:0,b:0};o.q+=Number(a.balance||0);o.b+=Number(a.balance_base||0);});
@@ -84,14 +105,25 @@ async function viewDash(){
    ${S.dper==="year"?`<div class="row" style="align-items:center"><button class="x" id="pyp">‹</button><b>${S.dyear}</b><button class="x" id="pyn">›</button></div>${S.dyear!==+ano?'<button class="lk" id="py0">Voltar ao ano atual</button>':""}`:""}
    ${S.dper==="cus"?`<div style="display:flex;gap:8px"><label style="flex:1">De<input type="date" id="pdf" value="${S.dfrom||""}"></label><label style="flex:1">Até<input type="date" id="pdt" value="${S.dto||""}"></label></div><p id="pdm" class="neg"></p>${S.dfrom&&S.dto?"":'<p class="mu">Informe as duas datas (por enquanto mostra o mês atual).</p>'}`:""}
    ${rs.error?`<p class="neg">${esc(rs.error.message)}</p><p class="mu">Rode o script cartao_partida.sql no Supabase.</p>`:`<div class="row"><span>Receitas</span><span class="ddv pos" data-dd="rinc">${mm(inc)}</span></div><div class="row"><span>Despesas</span><span class="ddv neg" data-dd="rexp">${mm(exp)}</span></div><div class="row"><b>Resultado</b><b class="${inc+exp<0?"neg":"pos"}">${mm(inc+exp)}</b></div><div class="seg" style="margin-top:8px"><button data-cm="stm" class="${cm()==="stm"?"on":""}">Cartão: pela fatura</button><button data-cm="buy" class="${cm()==="buy"?"on":""}">Cartão: pela compra</button></div><div class="mu">Sem transferências. ${cm()==="stm"?"Compras no cartão contam no mês da fatura (vencimento).":"Compras no cartão contam pela data da compra."} ${cm()==="stm"?"As metas mensais e anuais também contam o cartão pela fatura; a semanal, pela data da compra.":"As metas abaixo também contam pela data da compra."}</div>`}</div>`;
-  $("main").innerHTML=`<div class="card"><div class="mu">Saldo geral</div>
+  const SITL={hoje:"Hoje",mes:"Fim do mês",tudo:"Tudo"};
+  const futHtml=sit==="hoje"?"":`<div style="margin-top:12px;border-top:2px solid var(--ac);padding-top:8px"><b>Compromissos previstos ${sit==="mes"?"até "+fdt(fimMes):"(todos)"}</b>
+    ${fu&&fu.error?`<p class="neg">${esc(fu.error.message)}</p>`:""}
+    <div class="row"><span>Parcelas e compras do cartão a vencer</span><span class="ddv ${fs("card")<0?"neg":""}" data-dd="pf:card">${mm(fs("card"))}</span></div>
+    <div class="row"><span>Financiamentos e empréstimos a pagar</span><span class="ddv ${fs("loan")<0?"neg":""}" data-dd="pf:loan">${mm(fs("loan"))}</span></div>
+    <div class="row"><span>Outros previstos (despesas e receitas)</span><span class="ddv ${fs("out")<0?"neg":fs("out")>0?"pos":""}" data-dd="pf:out">${mm(fs("out"))}</span></div>
+    <div class="row"><b>Saldo projetado</b><b class="${proj<0?"neg":"pos"}">${mm(proj)}</b></div>
+    <div class="mu">Saldo geral de hoje + lançamentos previstos com data ${sit==="mes"?"até o fim do mês":"futura"}. As linhas acima continuam mostrando hoje.${temPrev?(incPrev?` Inclui previdência e FGTS: ${pvm==="own"?"só o resgatável":"resgatável + potencial"} (sem descontar imposto ou taxa de resgate).`:" Sem previdência e FGTS."):""}</div></div>`;
+  $("main").innerHTML=`<div class="card"><div class="seg" style="margin-bottom:8px">${Object.keys(SITL).map(k=>`<button data-sit="${k}" class="${sit===k?"on":""}">${SITL[k]}</button>`).join("")}</div><div class="mu">Saldo geral${temPrev?(incPrev?(pvm==="own"?" (com previdência e FGTS: resgatável)":" (com previdência e FGTS: resgatável + potencial)"):" (sem previdência e FGTS)"):""}</div>
     <div style="font-size:1.6rem;font-weight:700" class="${geral<0?"neg":"pos"}"><span class="ddv" data-dd="geral">${mm(geral)}</span></div>
     ${Object.keys(FX).length?`<div class="row" style="margin-top:8px"><span>Disponível em reais (corrente e dinheiro)</span><span class="ddv ${dispR<0?"neg":""}" data-dd="dispR">${mm(dispR)}</span></div>
     <div class="row"><span>Disponível em moeda estrangeira<span class="mu" style="display:block">${Object.keys(FX).sort().map(c=>fmt(FX[c].q,c)).join(" · ")} · em R$ pelo custo médio</span></span><span class="ddv ${dispF<0?"neg":""}" data-dd="dispF">${mm(dispF)}</span></div>`
     :`<div class="row" style="margin-top:8px"><span>Disponível (corrente e dinheiro)</span><span class="ddv ${disp<0?"neg":""}" data-dd="disp">${mm(disp)}</span></div>`}
     <div class="row"><span>Cartões (dívida atual)</span><span class="ddv ${cart<0?"neg":""}" data-dd="cart">${mm(cart)}</span></div>
     ${B.some(a=>a.type==="benefit")?`<div class="row"><span>Benefícios (vales)</span><span class="ddv ${ben<0?"neg":""}" data-dd="ben">${mm(ben)}</span></div>`:""}
-    <div class="row"><span>Demais contas</span><span class="ddv ${demais<0?"neg":""}" data-dd="demais">${mm(demais)}</span></div></div>
+    <div class="row"><span>Demais contas</span><span class="ddv ${demais<0?"neg":""}" data-dd="demais">${mm(demais)}</span></div>
+    ${temPrev?`<div class="row"><span>Previdência e FGTS${incPrev?"":' <span class="mu">(fora do saldo)</span>'}<span class="mu" style="display:block">${pvm==="own"?"só o resgatável":`resgatável ${mm(prevOwn)} · potencial ${mm(prevAll-prevOwn)}`}</span></span><span class="ddv${incPrev?"":" mu"}" data-dd="prev">${mm(prevTot)}</span></div>
+    <label style="margin-top:4px">Previdência e FGTS no Painel<select id="dprev">${Object.keys(PVO).map(k=>`<option value="${k}" ${pvr===k?"selected":""}>${PVO[k]}</option>`).join("")}</select></label>`:""}
+    ${futHtml}</div>
   ${invHtml}
   ${perHtml}
   ${nU?`<div class="card" style="border-color:var(--yel)">⚠️ <b>${nU} despesa(s) sem categoria em ${ano}</b>, somando ${mm(totU)}. Elas não entram nas metas. Corrija pelo ✏️ na tela Lançamentos.<br><button class="sec" id="gu">Ver lançamentos</button></div>`:""}
@@ -100,6 +132,8 @@ async function viewDash(){
   <button class="sec" id="gm">🎯 Gerenciar metas</button>
   <button class="sec" id="gl">🏦 Financiamentos e empréstimos</button>`;
   $("gm").onclick=()=>go("metas");
+  document.querySelectorAll("[data-sit]").forEach(b=>b.onclick=()=>{lsSet("dsit",b.dataset.sit);viewDash();});
+  if($("dprev"))$("dprev").onchange=()=>{lsSet("dprev",$("dprev").value);viewDash();};
   document.querySelectorAll("[data-cm]").forEach(b=>b.onclick=()=>{lsSet("cardmode",b.dataset.cm);viewDash();});
   document.querySelectorAll("[data-dp]").forEach(b=>b.onclick=()=>{S.dper=b.dataset.dp;viewDash();});
   const pnav=(id,f)=>{if($(id))$(id).onclick=()=>{f();viewDash();};};
@@ -124,13 +158,18 @@ async function viewDash(){
   const accList=(f,tot)=>{const L=B.filter(f),nz=L.filter(a=>Math.abs(Number(a.balance_base||0))>=0.005).sort((a,b)=>Number(b.balance_base)-Number(a.balance_base)),z=L.length-nz.length;
     return (nz.map(accRow).join("")||'<p class="mu">Nenhuma conta com saldo.</p>')+`<div class="row" style="border-top:2px solid var(--ac)"><b>Total</b><b>${mm(tot)}</b></div>`+(z?`<div class="mu">${z} conta(s) com saldo zero não aparecem.</div>`:"")+'<div class="mu">📋 abre os lançamentos do mês da conta.</div>';};
   const DD={
-    geral:()=>["Saldo geral",[["Disponível (corrente e dinheiro)",disp],["Cartões (dívida atual)",cart],...(B.some(a=>a.type==="benefit")?[["Benefícios (vales)",ben]]:[]),["Demais contas",demais]].map(([k,v])=>`<div class="row"><span>${k}</span><span class="${v<0?"neg":""}">${mm(v)}</span></div>`).join("")+`<div class="row" style="border-top:2px solid var(--ac)"><b>Saldo geral</b><b>${mm(geral)}</b></div><div class="mu">Toque em cada valor do Painel para ver as contas.</div>`],
+    geral:()=>["Saldo geral",[["Disponível (corrente e dinheiro)",disp],["Cartões (dívida atual)",cart],...(B.some(a=>a.type==="benefit")?[["Benefícios (vales)",ben]]:[]),["Demais contas",demais],...(temPrev&&incPrev?[["Previdência e FGTS ("+(pvm==="own"?"resgatável":"resgatável + potencial")+")",prevTot]]:[])].map(([k,v])=>`<div class="row"><span>${k}</span><span class="${v<0?"neg":""}">${mm(v)}</span></div>`).join("")+`<div class="row" style="border-top:2px solid var(--ac)"><b>Saldo geral</b><b>${mm(geral)}</b></div><div class="mu">Toque em cada valor do Painel para ver as contas.</div>`],
     disp:()=>["Disponível (corrente e dinheiro)",accList(isDisp,disp)],
     dispR:()=>["Disponível em reais",accList(a=>isDisp(a)&&cuOf(a)==="BRL",dispR)],
     dispF:()=>["Disponível em moeda estrangeira",accList(a=>isDisp(a)&&cuOf(a)!=="BRL",dispF)+'<div class="mu">Em R$ pelo custo médio de cada conta.</div>'],
     cart:()=>["Cartões (dívida atual)",accList(a=>a.type==="credit_card",cart)+'<div class="mu">Dívida atual = compras até hoje menos pagamentos (a partir do Mês de partida de cada cartão); não é o total de uma fatura.</div>'],
     ben:()=>["Benefícios (vales)",B.filter(a=>a.type==="benefit").map(a=>accRow(a)+S.wallets.filter(w=>w.account_id===a.account_id&&(w.is_active||Math.abs(S.wbal[w.id]||0)>=0.005)).map(w=>`<div class="row" style="padding-left:14px"><span class="mu">${esc(w.name)}</span><span class="mu">${mm(S.wbal[w.id]||0)}</span></div>`).join("")).join("")+`<div class="row" style="border-top:2px solid var(--ac)"><b>Total</b><b>${mm(ben)}</b></div>`],
-    demais:()=>["Demais contas",accList(a=>!isDisp(a)&&a.type!=="credit_card"&&a.type!=="benefit",demais)+'<div class="mu">Investimentos entram com o caixa mais o valor dos ativos.</div>'],
+    demais:()=>["Demais contas",accList(a=>!isDisp(a)&&a.type!=="credit_card"&&a.type!=="benefit"&&!isPrev(a),demais)+'<div class="mu">Investimentos entram com o caixa mais o valor dos ativos.</div>'],
+    prev:()=>["Previdência e FGTS",B.filter(isPrev).map(a=>{const L=PQ.filter(x=>x.account_id===a.account_id);
+        return `<div class="row"><div><div>${esc(ddAccName(a.account_id))}</div><div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right;white-space:nowrap"><span>${mm(prevOf(a,"all"))}</span><button class="x" data-dl2="${a.account_id}" title="Gerenciar a conta">⚙</button></div></div>`
+          +L.map(x=>`<div class="row" style="padding-left:14px"><span class="mu">${esc(x.name)}${x.only_dismissal?" · potencial":" · resgatável"}${x.date?" · "+fdt(x.date):" · sem saldo"}</span><span class="mu">${mm(x.value)}</span></div>`).join("");}).join("")
+      +`<div class="row" style="border-top:2px solid var(--ac)"><span>Resgatável</span><b>${mm(prevOwn)}</b></div><div class="row"><span>Potencial</span><b>${mm(prevAll-prevOwn)}</b></div><div class="row"><span>Resgatável + potencial</span><b>${mm(prevAll)}</b></div>
+      <div class="mu">${incPrev?`No Saldo geral: ${pvm==="own"?"só o resgatável":"resgatável + potencial"}.`:`Só exibido (${pvm==="own"?"resgatável":"resgatável + potencial"}), fora do Saldo geral.`} Último saldo informado de cada parte, sem descontar imposto nem taxa de resgate. Atualize em Contas > ⚙ da conta.</div>`],
     inv:()=>["Investimentos",Object.keys(icl).filter(k=>Math.abs(icl[k])>=0.005).map(k=>`<div class="row"><span>${ICLS[k]||k}</span><span>${mm(icl[k])}</span></div>`).join("")+`<div class="row"><span>Caixa e poupança (sem ativo)</span><span>${mm(cashI)}</span></div><div class="row" style="border-top:2px solid var(--ac)"><b>Total</b><b>${mm(invTot)}</b></div><div class="mu">Toque no valor de cada classe ou do caixa no Painel para ver os ativos e as contas.</div>`],
     icash:()=>["Caixa e poupança (sem ativo)",(bl.invSum||[]).filter(x=>iok(x.account_id)&&Math.abs(Number(x.cash||0))>=0.005).map(x=>`<div class="row"><span>${esc(ddAccName(x.account_id))}</span><span>${mm(x.cash)}</span></div>`).join("")+`<div class="row" style="border-top:2px solid var(--ac)"><b>Total</b><b>${mm(cashI)}</b></div>`]};
   const ddInv=k=>{const L=(ip.data||[]).filter(p=>p.is_active&&iok(p.account_id)&&Number(p.qty)>0&&p.class===k).sort((a,b)=>Number(b.current_value)-Number(a.current_value));
@@ -169,7 +208,10 @@ async function viewDash(){
     c.innerHTML=`<div class="mu">${fdt(f)} a ${fdt(t)} · meta ${mm(m.budget_amount)}</div>`+ddCatList(r.data,val)+`<div class="row" style="border-top:2px solid var(--ac)"><b>Gasto</b><b>${mm(T)}</b></div>`+(Math.abs(T-Number(m.spent))>=0.01?`<div class="mu neg">Difere da meta (${mm(m.spent)}); me avise para eu conferir.</div>`:"")+'<div class="mu">Inclui previstos e parcelas futuras do período; estornos (valores positivos) abatem o gasto.</div>';};
   document.querySelectorAll("[data-dd]").forEach(el=>el.onclick=()=>{const k=el.dataset.dd;
     if(k==="rinc"||k==="rexp")return ddRes(k==="rinc");
+    if(k.startsWith("pf:")){const g=k.slice(3),T={card:"Parcelas e compras do cartão a vencer",loan:"Financiamentos e empréstimos a pagar",out:"Outros previstos"}[g];
+      ddOpen(esc(T),ddCatList(FG[g],fv)+`<div class="row" style="border-top:2px solid var(--ac)"><b>Total</b><b>${mm(fs(g))}</b></div><div class="mu">Lançamentos previstos com data ${sit==="mes"?"de amanhã até "+fdt(fimMes):"a partir de amanhã"}; despesas negativas e receitas positivas.</div>`);return;}
     const [t,h]=k.startsWith("icl:")?ddInv(k.slice(4)):DD[k]();const c=ddOpen(esc(t),h);
+    c.querySelectorAll("[data-dl2]").forEach(b=>b.onclick=()=>{ddClose();S.acmId=b.dataset.dl2;go("acm");});
     c.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>{ddClose();S.fAcc=b.dataset.dl;S.fWal=null;S.fTrip=null;S.lper="mon";S.lmon=today().slice(0,8)+"01";S.lim=50;go("list");});});
   document.querySelectorAll("[data-mt]").forEach(el=>el.onclick=()=>{const [a,b]=el.dataset.mt.split("|");ddMeta(+a,+b);});
   $("gl").onclick=()=>go("loans");
