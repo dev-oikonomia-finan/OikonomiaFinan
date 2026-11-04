@@ -13,6 +13,12 @@ async function viewLoans(msg){
       <div class="mu">${pc} de ${tot} pagas · ${rem>0?"faltam "+rem:"quitado ✓"} · conta sugerida: ${esc(an(l.account_id))}</div>
       <div class="bar"><i style="width:${pct}%;background:var(--ac)"></i></div>
       ${rem>0?`<div class="mu">Próxima (${l.next_number}/${tot}): ${mm(l.next_amount)} em ${fdt(l.next_date)} · ainda a pagar ${mm(l.remaining_amount)}</div>`:""}
+      ${(()=>{const c=S.loans.find(x=>x.id===l.contract_id)||{},pa=c.payoff_amount==null?null:Number(c.payoff_amount),ra=Number(l.remaining_amount)||0,velho=c.payoff_date&&(new Date(today()+"T12:00:00")-new Date(c.payoff_date+"T12:00:00"))/864e5>60;
+        return rem>0||pa!==null?`<div class="mu">${pa!==null?`Saldo devedor ${mm(pa)} em ${fdt(c.payoff_date)}${ra>0?` · parcelas restantes ${mm(ra)} · <b class="pos">economia ao quitar ${mm(ra-pa)}</b>`:""}${velho?' · <span class="neg">desatualizado (mais de 60 dias)</span>':""}`:"Saldo devedor não informado: no Painel (Tudo) conta pelas parcelas restantes."}</div>
+        <details><summary class="mu">Informar saldo devedor para quitação</summary>
+          <div style="display:flex;gap:8px"><label style="flex:1">Saldo devedor (R$)<input data-pyv="${l.contract_id}" inputmode="decimal" placeholder="0,00" value="${pa!==null?fa(pa):""}"></label><label style="flex:1">Consultado em<input type="date" data-pyd="${l.contract_id}" value="${c.payoff_date||today()}" max="${today()}"></label></div>
+          <button class="sec" data-pys="${l.contract_id}">Salvar saldo devedor</button>${pa!==null?`<button class="x" data-pyc="${l.contract_id}">Limpar</button>`:""}
+          <p class="mu">Valor para quitar o contrato hoje, como o banco informa (principal que falta, sem os juros futuros). Atualize uma vez por mês; depois de pagar uma parcela, o valor informado fica acima do real até a próxima atualização.</p></details>`:"";})()}
       <div style="margin-top:8px"><button data-lp="${l.installment_group_id}">Ver parcelas</button> <button data-la="${l.contract_id}">Antecipar</button> <button class="neg" data-ld="${l.contract_id}">Apagar</button></div></div>`;}).join(""):'<p class="mu">Nenhum contrato ainda. Use o formulário abaixo.</p>'}</div>
   <div class="card"><b>Novo contrato</b>
    <label>Nome<input id="ln" placeholder="Ex.: Financiamento do carro"></label>
@@ -42,6 +48,15 @@ async function viewLoans(msg){
     $("ldr").value=fa((sd/n*tx/100).toFixed(2));say("Queda calculada. Confira o campo acima.",true);};
   document.querySelectorAll("[data-lp]").forEach(b=>b.onclick=()=>{S.par=b.dataset.lp;S.parFrom="loans";go("par");});
   document.querySelectorAll("[data-la]").forEach(b=>b.onclick=()=>{S.antId=b.dataset.la;go("ant");});
+  /* saldo devedor para quitação (só o último; set_loan_payoff confere família e valores) */
+  document.querySelectorAll("[data-pys]").forEach(b=>b.onclick=async()=>{const id=b.dataset.pys,sv=document.querySelector(`[data-pyv="${id}"]`).value.trim(),d=document.querySelector(`[data-pyd="${id}"]`).value,v=sv?num(sv):NaN;
+    if(!(v>=0)||Math.round(v*100)/100!==v)return say("Informe o saldo devedor (zero ou maior, até 2 casas).");
+    if(!d)return say("Informe a data em que consultou o saldo devedor.");if(d>today())return say("A data não pode ser futura.");
+    b.disabled=true;const {error}=await sb.rpc("set_loan_payoff",{p_contract:id,p_amount:v,p_date:d});
+    if(error){b.disabled=false;return say("Erro: "+error.message+(error.message.includes("set_loan_payoff")?" (rode o script saldo_devedor.sql no Supabase)":""));}
+    viewLoans("Saldo devedor salvo ✓");});
+  document.querySelectorAll("[data-pyc]").forEach(b=>b.onclick=async()=>{if(!confirm("Limpar o saldo devedor deste contrato? No Painel (Tudo) ele volta a contar pelas parcelas restantes."))return;
+    const {error}=await sb.rpc("set_loan_payoff",{p_contract:b.dataset.pyc,p_amount:null,p_date:null});if(error)return say("Erro: "+error.message);viewLoans("Saldo devedor limpo ✓");});
   document.querySelectorAll("[data-ld]").forEach(b=>b.onclick=async()=>{
     const l=L.find(x=>x.contract_id===b.dataset.ld);
     if(!confirm(`Apagar o contrato "${l.name}" e TODAS as parcelas dele (pagas e previstas)? Isso muda os saldos das contas e não pode ser desfeito.`))return;
