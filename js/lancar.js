@@ -23,6 +23,7 @@ function viewAdd(){
    <label>Data<input id="dt" type="date" value="${esc(P.dt||today())}"></label><p id="fh" class="mu"></p>${(S.trips||[]).length?`
    <label>Viagem ou passeio (opcional)<select id="tp">${tripOpts(P.trip!==undefined?P.trip:tripDefault(P.dt||today()))}</select></label><p id="tpn" class="mu"></p>`:""}
    ${P.qid?"":'<label class="ck"><input type="checkbox" id="fl"> ⭐ Salvar também como atalho</label>'}
+   ${S.kind==="expense"?'<div id="bgw"></div>':""}
    <button class="pri" id="save">Salvar</button><p id="msg" class="mu"></p></div>`;
   document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{
     if(b.dataset.k==="tr"){S.tr=null;S.trFrom="add";return go("tr");}
@@ -78,7 +79,8 @@ function viewAdd(){
     if($("pcl")){$("pcl").hidden=true;if($("pc").checked){$("pc").checked=false;pv();}}
     fxh();};
   $("wl").onchange=wv;$("v").addEventListener("input",wv);wl();
-  $("v").addEventListener("input",fxh);fx();loadIntl().then(()=>{if(S.tab==="add"&&$("fxi"))fxh();});
+  let bgSch=null;
+  $("v").addEventListener("input",fxh);fx();loadIntl().then(()=>{if(S.tab==="add"&&$("fxi"))fxh();if(bgSch)bgSch();});
   loadWallets().then(()=>{if(S.tab==="add"&&$("wl"))wl();});
   $("acc").onchange=()=>{
     pv();fh();hd();wl();fx();
@@ -89,6 +91,59 @@ function viewAdd(){
       const {error}=await sb.from("quick_entries").update({default_account_id:acc}).eq("id",P.qid);
       if(error)return $("msg").textContent="Erro: "+error.message;
       q0.default_account_id=acc;P.acc=acc;$("pin").innerHTML="";$("msg").textContent="Conta do atalho salva ✓";};};
+  /* ===== Cabe na meta? Simulação do impacto desta despesa nas metas, antes de salvar (nada é gravado) =====
+     Mesmas regras da budget_progress: categoria e categorias-mãe, mais a meta do Total geral (sem categoria);
+     semanal pela data; mensal e anual pela fatura quando o cartão está "pela fatura" (cm()==="stm"); parcelada: cada parcela no mês dela. */
+  if(S.kind==="expense"){
+    const BG={},hid=S.hid;let tk=0,tm=null;
+    const iso=z=>z.getFullYear()+"-"+String(z.getMonth()+1).padStart(2,"0")+"-"+String(z.getDate()).padStart(2,"0");
+    const okD=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||"")&&+v.slice(0,4)>=1900&&+v.slice(0,4)<=2100;
+    const br=v=>fmt(v,"BRL");
+    /* linhas que o Salvar geraria: [{d: data, v: valor positivo na moeda da conta}] */
+    const bgRows=()=>{
+      const val=num($("v").value),dt=$("dt").value;if(!(val>0)||!okD(dt))return [];
+      const on=!!($("pc")&&$("pc").checked);if(!on)return [{d:dt,v:val}];
+      const n=parseInt($("pn").value),pa=parseInt($("pa").value)||1;if(!(n>=2&&n<=48&&pa>=1&&pa<=n))return [];
+      const o=[];
+      if(pa>1){const pb=parseInt($("pbn").value),from=pb>=1&&pb<pa?pb:pa,vv=Math.round(val*100)/100;for(let i=from;i<=n;i++)o.push({d:dAdd(dt,i-pa),v:vv});return o;}
+      const p=Math.round(val/n*100)/100;for(let i=1;i<=n;i++)o.push({d:dAdd(dt,i-1),v:i<n?p:Math.round((val-p*(n-1))*100)/100});return o;};
+    const bgRun=async()=>{
+      const box=$("bgw");if(!box||S.tab!=="add")return;const my=++tk;
+      const cat=$("cat").value,dt=$("dt").value,a=S.accounts.find(x=>x.id===$("acc").value),R=bgRows();
+      if(!cat||!a||!R.length){box.innerHTML="";return;}
+      const cur=a.currency.trim();let k=1;
+      if(cur!=="BRL"){const I=S.intl[a.id];if(!I||!(Number(I.avg)>0)){box.innerHTML='<div class="mu">🎯 Cabe na meta? Esta conta ainda não tem custo médio para converter a despesa em reais.</div>';return;}k=Number(I.avg);}
+      const md=cm(),card=md==="stm"?S.cards.find(x=>x.account_id===a.id):null;
+      const mOf=d=>card?String(stm(card,d)).slice(0,7):d.slice(0,7);
+      const x=new Date(dt+"T12:00:00");x.setDate(x.getDate()-(x.getDay()+6)%7);const w0=iso(x);x.setDate(x.getDate()+6);const w1=iso(x);
+      const m0=mOf(dt),y0=m0.slice(0,4);
+      const P=[{p:"weekly",ref:dt,R:R.filter(r=>r.d>=w0&&r.d<=w1),lab:`Semanal · ${fdt(w0).slice(0,5)} a ${fdt(w1).slice(0,5)}`},
+        {p:"monthly",ref:m0+"-01",R:R.filter(r=>mOf(r.d)===m0),lab:"Mensal · "+new Date(m0+"-01T12:00:00").toLocaleDateString("pt-BR",{month:"long",year:"numeric"})+(card?" (fatura)":"")},
+        {p:"yearly",ref:y0+"-01-01",R:R.filter(r=>mOf(r.d).slice(0,4)===y0),lab:"Anual · "+y0+(card?" (fatura)":"")}];
+      const key=s=>s.p+"|"+s.ref+"|"+md,need=P.filter(s=>!BG[key(s)]);
+      if(need.length){
+        if(!box.innerHTML)box.innerHTML='<div class="mu">🎯 Calculando as metas…</div>';
+        const rs=await Promise.all(need.map(s=>sb.rpc("budget_progress",{p_household:hid,p_ref:s.ref,p_period:s.p,p_card_mode:md})));
+        if(my!==tk||!$("bgw"))return;
+        const e=rs.find(r=>r.error);if(e){box.innerHTML=`<div class="mu neg">🎯 Não consegui ler as metas: ${esc(e.error.message)}</div>`;return;}
+        need.forEach((s,i)=>{BG[key(s)]=rs[i].data||[];});}
+      /* a categoria escolhida e as mães dela (a meta da mãe soma as subcategorias) */
+      const anc=new Set();for(let c=cat,i=0;c&&i<20;i++){anc.add(c);c=(S.catsAll.find(z=>z.id===c)||{}).parent_id;}
+      const col=p=>p==null?"var(--mu)":p<=80?"var(--grn)":p<=100?"var(--yel)":"var(--red)",em=p=>p==null?"":p<=80?"🟢":p<=100?"🟡":"🔴",pf=p=>p==null?"—":p.toFixed(1).replace(".",",")+"%";
+      let html="";
+      P.forEach(s=>{const add=Math.round(s.R.reduce((t,r)=>t+r.v*k,0)*100)/100;if(add<0.005)return;
+        BG[key(s)].filter(m=>!m.category_id||anc.has(m.category_id)).forEach(m=>{
+          const amt=Number(m.budget_amount),sp=Number(m.spent),p0=amt>0?sp/amt*100:null,p1=amt>0?(sp+add)/amt*100:null,r1=amt-sp-add,b0=Math.max(0,Math.min(p0||0,100)),b1=Math.max(0,Math.min(p1||0,100)-b0);
+          html+=`<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><span><b>${esc(m.category_name)}</b> <span class="mu">· ${esc(s.lab)}</span></span><b style="white-space:nowrap"><span style="color:${col(p0)}">${pf(p0)}</span> → <span style="color:${col(p1)}">${pf(p1)}</span> ${em(p1)}</b></div>
+            <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:rgba(127,127,127,.2);margin:4px 0"><span style="width:${b0}%;background:${col(p0)}"></span><span style="width:${b1}%;background:${col(p1)};opacity:.5"></span></div>
+            <div class="mu">${br(sp)} + esta compra ${br(add)} de ${br(amt)} · ${r1>=0?"restariam "+br(r1):"estouraria em "+br(-r1)}</div></div>`;});});
+      box.innerHTML=`<div style="margin:10px 0;padding:8px 10px;border:1px dashed var(--ac);border-radius:10px"><b>🎯 Cabe na meta?</b>
+        ${html||'<div class="mu">Nenhuma meta para esta categoria (nem meta do Total geral).</div>'}
+        ${R.length>1?'<div class="mu">Compra parcelada: cada parcela conta no mês dela; aqui entram só as parcelas de cada período.</div>':""}
+        <div class="mu">Simulação: nada é gravado até você tocar em Salvar. Inclui previstos, como no Painel.${card?" Cartão: mensal e anual pela fatura; semanal pela data da compra.":""}${cur!=="BRL"?` Em R$ pelo custo médio (${fx4(k)} por 1 ${esc(cur)}).`:""}</div></div>`;};
+    const sch=()=>{clearTimeout(tm);tm=setTimeout(bgRun,300);};bgSch=sch;
+    ["v","pc","pn","pa","pbn","cat","acc","dt"].forEach(i=>{const el=$(i);if(el){el.addEventListener("input",sch);el.addEventListener("change",sch);}});
+    sch();}
   $("save").onclick=async()=>{
     const val=num($("v").value);
     if(!(val>0))return $("msg").textContent="Informe um valor válido.";

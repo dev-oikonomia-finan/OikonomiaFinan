@@ -138,7 +138,8 @@ async function viewDash(){
   ${tem?secs:'<div class="card">Você ainda não tem metas. Crie a primeira para acompanhar seus gastos com semáforo.</div>'}
   ${loanHtml}
   <button class="sec" id="gm">🎯 Gerenciar metas</button>
-  <button class="sec" id="gl">🏦 Financiamentos e empréstimos</button>`;
+  <button class="sec" id="gl">🏦 Financiamentos e empréstimos</button>
+  <button class="sec" id="gpj">📈 Projeção de patrimônio</button>`;
   $("gm").onclick=()=>go("metas");
   document.querySelectorAll("[data-sit]").forEach(b=>b.onclick=()=>{lsSet("dsit",b.dataset.sit);viewDash();});
   if($("dprev"))$("dprev").onchange=()=>{lsSet("dprev",$("dprev").value);viewDash();};
@@ -227,6 +228,8 @@ async function viewDash(){
     c.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>{ddClose();S.fAcc=b.dataset.dl;S.fWal=null;S.fTrip=null;S.lper="mon";S.lmon=today().slice(0,8)+"01";S.lim=50;go("list");});});
   document.querySelectorAll("[data-mt]").forEach(el=>el.onclick=()=>{const [a,b]=el.dataset.mt.split("|");ddMeta(+a,+b);});
   $("gl").onclick=()=>go("loans");
+  /* Projeção: parte do Saldo geral exatamente como o Painel mostra (com a opção de previdência e FGTS escolhida); a tela fica na aba Painel (rota "proj") */
+  $("gpj").onclick=()=>{S.pjBase={geral,lab:temPrev?(incPrev?"com previdência e FGTS: "+PVL[pvm]:"sem previdência e FGTS"):""};go("proj");};
   if($("gi"))$("gi").onclick=()=>go("inv");
   if($("gu"))$("gu").onclick=()=>{S.lim=50;S.lper="all";go("list");};
 }
