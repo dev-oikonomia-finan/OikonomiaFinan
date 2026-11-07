@@ -1,5 +1,6 @@
 /* ===== Investimentos (Fase 1) ===== */
-const ICLS={renda_fixa:"Renda fixa",acoes:"Ações",fiis:"FIIs",cripto:"Cripto",previdencia:"Previdência",outros:"Outros"},r2=v=>Math.round(v*100)/100,nq=v=>Number(v).toLocaleString("pt-BR",{maximumFractionDigits:8});
+/* a ordem das chaves é a ordem de exibição das classes (desde 06/11/2026: renda fixa, Tesouro, FIIs, ações…); clsR = posição da classe */
+const ICLS={renda_fixa:"Renda fixa",tesouro:"Tesouro Direto",fiis:"FIIs",acoes:"Ações",cripto:"Cripto",previdencia:"Previdência",outros:"Outros"},clsR=c=>{const i=Object.keys(ICLS).indexOf(c);return i<0?99:i;},r2=v=>Math.round(v*100)/100,nq=v=>Number(v).toLocaleString("pt-BR",{maximumFractionDigits:8});
 async function viewIr(){
   const hid=S.hid,td=today(),cy=Number(td.slice(0,4)),Y=Math.min(cy,Number(S.iry)||cy),
     D1=Y===cy&&td<Y+"-12-31"?td:Y+"-12-31",D0=(Y-1)+"-12-31",part=D1!==Y+"-12-31",
@@ -30,7 +31,7 @@ async function viewIr(){
   const CA=await Promise.all(A.map(async a=>({a,c1:part?{v:smc[a.id]??0,s:"saldo atual"}:await cashFor(a.id,Y+"-12-01"),c0:await cashFor(a.id,(Y-1)+"-12-01")})));
   if(S.tab!=="ir")return;
   const cv=c=>c.v==null?"indisponível":mm(c.v),
-    R=AL.map(a=>({a,p1:posAt(a.id,D1),p0:posAt(a.id,D0)})).filter(x=>has(x.p1)||has(x.p0)),
+    R=AL.map(a=>({a,p1:posAt(a.id,D1),p0:posAt(a.id,D0)})).filter(x=>has(x.p1)||has(x.p0)).sort((x,y)=>clsR(x.a.class)-clsR(y.a.class)||y.p1.c-x.p1.c),
     pT=(p,a)=>has(p)?(a.price_mode==="quote"?nq(p.q)+" un. · ":"")+"custo "+mm(p.c):"sem posição",
     sumC=k=>R.reduce((r,x)=>r+x[k].c,0),
     bens=A.map(a=>{const rs=R.filter(x=>x.a.account_id===a.id),ca=CA.find(z=>z.a.id===a.id),
@@ -61,9 +62,9 @@ async function viewIr(){
     b.v+=Number(o.amount);if(AM[o.asset_id].class==="acoes")b.ac+=Number(o.amount);b.r+=Number(o.realized_result||0);});
   const MK=Object.keys(M).sort(),TS=MK.reduce((r,m)=>({v:r.v+M[m].v,ac:r.ac+M[m].ac,r:r.r+M[m].r}),{v:0,ac:0,r:0}),
     nc=[...new Set([...R.map(x=>x.a.id),...inc.data.map(i=>i.asset_id)])].map(id=>AM[id]).filter(a=>a&&["acoes","fiis","previdencia"].includes(a.class)&&!a.cnpj);
-  const RF=ops.data.filter(o=>o.side==="sell"&&o.date.startsWith(String(Y))&&AM[o.asset_id]&&AM[o.asset_id].class==="renda_fixa"&&AM[o.asset_id].price_mode==="total"),
+  const RF=ops.data.filter(o=>o.side==="sell"&&o.date.startsWith(String(Y))&&AM[o.asset_id]&&["renda_fixa","tesouro"].includes(AM[o.asset_id].class)&&AM[o.asset_id].price_mode==="total"),
     rfT=RF.reduce((r,o)=>({n:r.n+Number(o.amount),t:r.t+Number(o.tax_withheld||0),g:r.g+Number(o.realized_result||0)+Number(o.tax_withheld||0)}),{n:0,t:0,g:0}),
-    rfH=RF.length?`<div class="card"><b>Resgates de renda fixa em ${Y}</b>
+    rfH=RF.length?`<div class="card"><b>Resgates de renda fixa e Tesouro em ${Y}</b>
       <p class="mu">Valor líquido é o que caiu na conta. Rendimento bruto = resultado do resgate + IR retido. Provável ficha: Tributação Exclusiva/Definitiva, a confirmar no informe de rendimentos da instituição. Resgate sem IR informado pode ser isento (poupança, LCI, LCA) ou esquecimento.</p>
       ${RF.map(o=>{const a=AM[o.asset_id],t=Number(o.tax_withheld||0),g=Number(o.realized_result||0)+t;
         return `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${nm(a)} · ${fdt(o.date)}${o.net_balance_before!=null&&Number(o.amount)<Number(o.net_balance_before)?" · parcial":""}</b><b>${mm(o.amount)}</b></div>
@@ -160,7 +161,7 @@ async function viewRent(){
     cls=g=>g.ganho<0?"neg":"pos",
     sum=(a,b)=>({inv:a.inv+b.inv,rec:a.rec+b.rec,fim:a.fim+b.fim,fl:a.fl.concat(b.fl),sem:a.sem||b.sem,ganho:a.ganho+b.ganho}),
     zero=()=>({inv:0,rec:0,fim:0,fl:[],sem:false,ganho:0});
-  const R=AL.map(a=>({a,g:calc(a)})).filter(x=>x.g.inv>0||x.g.rec>0||x.g.fim>0),
+  const R=AL.map(a=>({a,g:calc(a)})).filter(x=>x.g.inv>0||x.g.rec>0||x.g.fim>0).sort((x,y)=>clsR(x.a.class)-clsR(y.a.class)||y.g.fim-x.g.fim),
     TOT=R.reduce((t,x)=>sum(t,x.g),zero()),CL={};
   R.forEach(x=>{CL[x.a.class]=sum(CL[x.a.class]||zero(),x.g);});
   const L1=fdt(D1),
@@ -200,7 +201,7 @@ async function viewInv(){
   const er=[sm,po,op,ri,ry,ast].find(r=>r.error);
   if(er){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button><p class="neg">${esc(er.error.message)}</p><p class="mu">Se a tabela ou a view não existe, rode o script investimentos_fase1.sql no Supabase.</p></div>`;$("bk").onclick=()=>go("acc");return;}
   const A=S.accounts.filter(a=>a.type==="investment"),ok=id=>A.some(a=>a.id===id),
-    P=(po.data||[]).filter(p=>p.is_active&&ok(p.account_id)),H=P.filter(p=>Number(p.qty)>0),m=S.im||"",
+    P=(po.data||[]).filter(p=>p.is_active&&ok(p.account_id)),H=P.filter(p=>Number(p.qty)>0).sort((a,b)=>clsR(a.class)-clsR(b.class)||Number(b.current_value)-Number(a.current_value)),m=S.im||"",
     T=(sm.data||[]).filter(x=>ok(x.account_id)),cls={},sum=k=>T.reduce((r,x)=>r+Number(x[k]||0),0),td=new Date().toISOString().slice(0,10);
   H.forEach(p=>{cls[p.class]=(cls[p.class]||0)+Number(p.current_value);});
   const sel=(id,o)=>`<select id="${id}">${o}</select>`,accO=A.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join(""),
@@ -245,7 +246,7 @@ async function viewInv(){
     <p class="mu" id="rn"></p>
     <p class="mu">Entra no caixa da conta de investimento pelo valor líquido. Não é receita nem entra no Resultado do período.</p>
     <button class="sec" id="rsv">Salvar rendimento</button><button class="lk" id="rcx">Cancelar</button></div>`;
-  const AL=(ast.data||[]).filter(a=>ok(a.account_id)),qtyOf=id=>Number((po.data||[]).find(p=>p.asset_id===id)?.qty||0),
+  const AL=(ast.data||[]).filter(a=>ok(a.account_id)).sort((a,b)=>clsR(a.class)-clsR(b.class)||String(a.ticker||a.name).localeCompare(String(b.ticker||b.name),"pt-BR")),qtyOf=id=>Number((po.data||[]).find(p=>p.asset_id===id)?.qty||0),
     accN=id=>esc(A.find(a=>a.id===id)?.name||""),ea=m==="edit"?AL.find(x=>x.id===S.ie):null;
   if(m==="edit"&&ea)form=`<div class="card"><b>Editar ativo</b>
     <p class="mu">${accN(ea.account_id)} · ${ICLS[ea.class]} (conta, classe e modo de valor não mudam)</p>
@@ -260,7 +261,7 @@ async function viewInv(){
     <div class="row"><span class="mu">Caixa (ainda não investido)</span><span>${mm(sum("cash"))}</span></div>
     <div class="row"><span class="mu">Em ativos</span><span>${mm(sum("in_assets"))}</span></div>
     <div class="row"><span class="mu">Rendimentos no ano (líquido)</span><span class="pos">${mm((ry.data||[]).reduce((r,x)=>r+Number(x.net),0))}</span></div>
-    ${Object.keys(cls).map(k=>`<div class="row" style="padding-left:14px"><span class="mu">${ICLS[k]}</span><span>${mm(cls[k])}</span></div>`).join("")}`
+    ${Object.keys(cls).sort((a,b)=>clsR(a)-clsR(b)).map(k=>`<div class="row" style="padding-left:14px"><span class="mu">${ICLS[k]}</span><span>${mm(cls[k])}</span></div>`).join("")}`
     :'<p class="mu">Crie em Contas uma conta do tipo Investimento (em reais) e transfira dinheiro para ela. Cada aporte é uma transferência.</p>'}</div>
   ${A.length&&!m?`<div class="card"><button class="sec" id="nb" style="margin-top:0">+ Ativo</button><button class="sec" id="no" ${P.length?"":"disabled"}>+ Operação (compra ou venda)</button><button class="sec" id="nq" ${H.length?"":"disabled"}>Atualizar cotações</button><button class="sec" id="nr" ${P.length?"":"disabled"}>+ Rendimento</button><button class="sec" id="nir">Relatório de IR</button><button class="sec" id="nrt">Rentabilidade</button></div>`:""}
   ${form}

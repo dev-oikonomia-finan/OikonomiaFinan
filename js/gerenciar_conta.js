@@ -8,6 +8,10 @@ async function viewAcm(){
    <label>Nome<input id="an2" value="${esc(a.name)}"></label>
    <button class="pri" id="as">Salvar nome</button>
    <div class="row" style="margin-top:14px"><span>Saldo atual</span><b>${fmt(bal,cur)}</b></div>
+   <div class="card" style="margin-top:12px"><b>Instituição</b>
+     <label>Banco ou emissor<input id="ainst" list="ainl2" maxlength="60" placeholder="Ex.: Itaú, Nubank, CEF" value="${esc((a.institution||"").trim())}"></label><datalist id="ainl2">${instNames().map(n=>`<option value="${esc(n)}">`).join("")}</datalist>
+     <button class="sec" id="ainsv">Salvar instituição</button>
+     <p class="mu">Contas com a mesma instituição aparecem juntas em Contas e no Relatório do mês, com o total em reais (ex.: Itaú corrente, poupança e os cartões emitidos pelo Itaú). Não muda saldos, transferências nem o grupo internacional. Deixe vazio para tirar.</p></div>
    ${(a.type==="checking"||a.type==="cash")&&cur==="BRL"?`<div class="card" style="margin-top:12px"><b>Saldo inicial</b>
      <label>Saldo no extrato<input id="aob" inputmode="decimal" placeholder="0,00" value="${a.opening_balance==null?"":fa(a.opening_balance)}"></label>
      <label>Na data (último dia de um mês)<input type="date" id="aod" value="${a.opening_date||""}"></label>
@@ -71,6 +75,11 @@ async function viewAcm(){
     if(error)return say("Erro: "+error.message);await loadRef();viewAcm();};
   if($("agsv"))$("agsv").onclick=async()=>{const g=$("agn").value.trim(),{error}=await sb.from("accounts").update({group_name:g||null}).eq("id",a.id);
     if(error)return say(error.message.includes("accounts_group_uq")?"Já existe, neste grupo, uma conta ativa nesta moeda.":"Erro: "+error.message);await loadRef();viewAcm();};
+  $("ainsv").onclick=async()=>{let v=$("ainst").value.trim();
+    /* mesma grafia de uma instituição já usada (ex.: "itau" → "Itaú" só se for igual sem maiúsculas) */
+    const ex=instNames().find(n=>n.toLowerCase()===v.toLowerCase());if(ex)v=ex;
+    const {error}=await sb.from("accounts").update({institution:v||null}).eq("id",a.id);
+    if(error)return say("Erro: "+error.message+(/institution/.test(error.message)?" (rode o script instituicao.sql no Supabase)":""));await loadRef();viewAcm();};
   if($("asv"))$("asv").onclick=async()=>{const v=$("asm").value,{error}=await sb.from("accounts").update({start_month:v?v+"-01":null}).eq("id",a.id);
     if(error)return say("Erro: "+error.message);await loadRef();viewAcm();};
   $("ai").onclick=async()=>{

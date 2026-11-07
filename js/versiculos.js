@@ -16,10 +16,17 @@ async function splash(){
   const v=await verQuery(scope,true);
   const L=v.data||[];
   if(v.error||!L.length)return;
-  const mode=st?st.verse_order:"random",last=st?st.last_id:null;let x;
+  const mode=st?st.verse_order:"random",last=st?st.last_id:null;let x,shown=null;
   if(mode==="sequential"){const i=L.findIndex(a=>a.id===last);x=L[(i+1)%L.length];}
+  else if(mode==="shuffle"){
+    /* aleatória sem repetir (versiculos_rodada.sql): sorteia entre os ativos ainda não exibidos na rodada (shown_ids);
+       quando todos já apareceram, começa rodada nova, sem abrir com o último exibido */
+    const ids=new Set(L.map(a=>a.id));let sh=((st&&st.shown_ids)||[]).filter(id=>ids.has(id)),c=L.filter(a=>!sh.includes(a.id));
+    if(!c.length){sh=[];c=L.length>1?L.filter(a=>a.id!==last):L;}
+    x=c[Math.floor(Math.random()*c.length)];shown=sh.concat(x.id);}
   else{const c=L.length>1?L.filter(a=>a.id!==last):L;x=c[Math.floor(Math.random()*c.length)];}
-  sb.from("verse_settings").upsert({household_id:S.hid,user_id:S.uid,verse_order:mode,splash:st?st.splash:true,verse_scope:scope,last_id:x.id},{onConflict:"household_id,user_id"}).then(()=>{});
+  const up={household_id:S.hid,user_id:S.uid,verse_order:mode,splash:st?st.splash:true,verse_scope:scope,last_id:x.id};if(shown)up.shown_ids=shown;
+  sb.from("verse_settings").upsert(up,{onConflict:"household_id,user_id"}).then(()=>{});
   const d=document.createElement("div");
   d.style.cssText="position:fixed;inset:0;z-index:99;background:var(--bg);color:var(--tx);display:flex;justify-content:center;align-items:center;padding:calc(32px + env(safe-area-inset-top)) 28px 32px;text-align:center;cursor:pointer";
   d.innerHTML=`<div style="max-width:520px"><div style="font-size:1.3rem;line-height:1.6;font-style:italic">“${esc(x.text)}”</div><div style="margin-top:20px;font-weight:700;color:var(--ac)">${esc(refv(x))}</div>${x.version?`<div class="mu" style="font-size:.8rem;margin-top:2px">${esc(x.version)}</div>`:""}<div class="mu" style="margin-top:40px">Toque para continuar</div></div>`;
@@ -36,7 +43,9 @@ async function viewVer(msg){
   const L=v.data||[],st=s.data||{verse_order:"random",splash:true},multi=S.hs.length>1,E=L.find(x=>x.id===S.vid)||{};
   const VERS=[...new Set(L.map(x=>(x.version||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt"));
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Versículos</b>
-   <label>Ordem de exibição<select id="vo"><option value="random" ${st.verse_order==="random"?"selected":""}>Aleatória</option><option value="sequential" ${st.verse_order==="sequential"?"selected":""}>Sequencial</option></select></label>
+   <label>Ordem de exibição<select id="vo"><option value="random" ${st.verse_order==="random"?"selected":""}>Aleatória</option><option value="sequential" ${st.verse_order==="sequential"?"selected":""}>Sequencial</option><option value="shuffle" ${st.verse_order==="shuffle"?"selected":""}>Aleatória sem repetir (passa por todos)</option></select></label>
+   ${st.verse_order==="shuffle"?(()=>{const A=L.filter(x=>x.is_active),n=((st.shown_ids)||[]).filter(id=>A.some(x=>x.id===id)).length;
+     return `<div class="mu">Nesta rodada: ${n} de ${A.length} já ${n===1?"exibido":"exibidos"}. Quando todos aparecerem, começa uma rodada nova.</div>${n?'<button class="lk" id="vrr">↺ Recomeçar rodada</button>':""}`;})():""}
    ${multi?`<label>Versículos exibidos<select id="vsc"><option value="own" ${scope==="own"?"selected":""}>Apenas da família atual (${esc(famName(S.hid))})</option><option value="all" ${scope==="all"?"selected":""}>De todas as minhas famílias</option></select></label>`:""}
    <label class="ck"><input type="checkbox" id="vs" ${st.splash!==false?"checked":""}> Mostrar versículo ao abrir o app</label>
    <button class="sec" id="vsv">Salvar configuração</button></div>
@@ -62,6 +71,8 @@ async function viewVer(msg){
     const {error}=E.id?await sb.from("bible_verses").update(row).eq("id",E.id):await sb.from("bible_verses").insert(row);
     if(error)return say("Erro: "+error.message);if(vr)lsSet("ver_last",vr);S.vid=null;viewVer("Salvo ✓");};
   if($("vcan"))$("vcan").onclick=()=>{S.vid=null;viewVer();};
+  if($("vrr"))$("vrr").onclick=async()=>{const {error}=await sb.from("verse_settings").update({shown_ids:[]}).eq("household_id",S.hid).eq("user_id",S.uid);
+    if(error)return say("Erro: "+error.message);viewVer("Rodada recomeçada ✓");};
   document.querySelectorAll("[data-ve]").forEach(b=>b.onclick=()=>{S.vid=b.dataset.ve;viewVer().then(()=>window.scrollTo(0,0));});
   document.querySelectorAll("[data-vt]").forEach(b=>b.onclick=async()=>{const x=L.find(y=>y.id===b.dataset.vt);
     const {error}=await sb.from("bible_verses").update({is_active:!x.is_active}).eq("id",x.id);if(error)return say("Erro: "+error.message);viewVer();});

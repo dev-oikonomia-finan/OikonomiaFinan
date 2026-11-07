@@ -10,20 +10,32 @@ async function viewAcc(){
     return `<div style="padding:0 0 8px 14px;border-bottom:1px solid var(--bd)">${L.map(x=>`<div class="row" style="border:0;padding:6px 0"><div>${esc(x.name)}<div class="mu">${x.only_dismissal?"potencial · ":"resgatável · "}${x.date?"em "+fdt(x.date):"sem saldo informado"}</div></div><div style="text-align:right">${fmt(x.value,"BRL")}</div></div>`).join("")}</div>`;};
   const WB={};(wbd||[]).forEach(r=>{WB[r.wallet_id]=Number(r.balance);});
   const wbk=a=>{const L=walletsOf(a.account_id);return `<div style="padding:0 0 8px 14px;border-bottom:1px solid var(--bd)">${L.length?L.map(w=>`<div class="row" style="border:0;padding:6px 0"><div>${esc(w.name)}<div class="mu">${w.expected_amount?"esperado "+fmt(w.expected_amount,a.currency)+" · ":""}${walWhen(w)}</div></div><div style="text-align:right">${fmt(WB[w.id]||0,a.currency)}<button class="x" data-cr="${w.id}">+ Crédito</button></div></div>`).join(""):'<div class="mu">Nenhuma carteira. Crie em ⚙ da conta.</div>'}</div>`;};
-  const rowH=(a,ind)=>`<div class="row"${ind?' style="padding-left:16px"':""}><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}<button class="x" data-mg="${a.account_id}">⚙</button>${a.currency.trim()!=="BRL"?`<div class="mu">≈ ${mm(a.balance_base)} em reais (custo)</div>`:""}${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Fatura</button></div>`:""}</div></div>${a.type==="benefit"?wbk(a):""}${a.type==="pension"||a.type==="fgts"?pbk(a):""}`;
+  const rowH=(a,pad)=>`<div class="row"${pad?` style="padding-left:${pad}px"`:""}><div>${esc(a.name)}<div class="mu">${TYPES[a.type]}</div></div><div style="text-align:right">${fmt(a.balance,a.currency)}<button class="x" data-mg="${a.account_id}">⚙</button>${a.currency.trim()!=="BRL"?`<div class="mu">≈ ${mm(a.balance_base)} em reais (custo)</div>`:""}${a.type==="credit_card"?`<div><button class="x" data-pay="${a.account_id}">Fatura</button></div>`:""}</div></div>${a.type==="benefit"?wbk(a):""}${a.type==="pension"||a.type==="fgts"?pbk(a):""}`;
   const vis=(bal||[]).filter(a=>S.accounts.some(x=>x.id===a.account_id)),byAcc={};S.accounts.forEach(x=>{byAcc[x.id]=x;});
-  let AL="";const seen={};
+  /* unidades: grupo internacional (as contas do mesmo group_name juntas, a em reais primeiro) ou conta sozinha */
+  const U=[],seen={};
   vis.forEach(a=>{const ac=byAcc[a.account_id],g=gk(ac);
-    if(!g){AL+=rowH(a,false);return;}
+    if(!g){U.push({L:[a],ac});return;}
     if(seen[g])return;seen[g]=1;
     const mem=vis.filter(x=>gk(byAcc[x.account_id])===g).sort((x,y)=>(y.currency.trim()==="BRL")-(x.currency.trim()==="BRL"));
-    const tot=mem.reduce((t,x)=>t+Number(x.balance_base||0),0);
-    AL+=`<div class="row" style="background:rgba(127,127,127,.08);padding-left:8px;padding-right:8px"><div><b>🌎 ${esc(ac.group_name.trim())}</b><div class="mu">${mem.length} ${mem.length===1?"conta":"contas"}</div></div><div style="text-align:right"><b>≈ ${mm(tot)}</b><div class="mu">reais + moeda ao custo</div></div></div>`+mem.map(x=>rowH(x,true)).join("");});
+    U.push({g:ac.group_name.trim(),L:mem,ac:byAcc[mem[0].account_id]});});
+  const grpH=(u,pad)=>{const tot=u.L.reduce((t,x)=>t+Number(x.balance_base||0),0);
+    return `<div class="row" style="background:rgba(127,127,127,.08);padding-left:${8+pad}px;padding-right:8px"><div><b>🌎 ${esc(u.g)}</b><div class="mu">${u.L.length} ${u.L.length===1?"conta":"contas"}</div></div><div style="text-align:right"><b>≈ ${mm(tot)}</b><div class="mu">reais + moeda ao custo</div></div></div>`+u.L.map(x=>rowH(x,pad+16)).join("");};
+  const unitH=(u,pad)=>u.g?grpH(u,pad):rowH(u.L[0],pad);
+  /* instituição (accounts.institution, instituicao.sql): as unidades da mesma instituição ficam juntas, no topo, com o total em reais;
+     grupo internacional primeiro, depois por tipo; a instituição de um grupo é a da conta em reais. Sem instituição: como antes. */
+  const TORD=["checking","cash","credit_card","benefit","investment","pension","fgts","loan","financing","other"],tr=t=>{const i=TORD.indexOf(t);return i<0?99:i;};
+  const IN={};U.forEach(u=>{const k=ik(u.ac);if(k)(IN[k]=IN[k]||{name:String(u.ac.institution).trim(),U:[]}).U.push(u);});
+  const uOrd=(a,b)=>(!!b.g-!!a.g)||tr(a.ac.type)-tr(b.ac.type)||a.ac.name.localeCompare(b.ac.name,"pt-BR");
+  let AL=Object.keys(IN).sort((a,b)=>IN[a].name.localeCompare(IN[b].name,"pt-BR")).map(k=>{const I=IN[k],us=I.U.sort(uOrd),all=us.flatMap(u=>u.L),tot=all.reduce((t,x)=>t+Number(x.balance_base||0),0);
+    return `<div class="row" style="background:rgba(127,127,127,.16);padding-left:8px;padding-right:8px;margin-top:8px"><div><b>🏦 ${esc(I.name)}</b><div class="mu">${all.length} ${all.length===1?"conta":"contas"}</div></div><div style="text-align:right"><b>≈ ${mm(tot)}</b><div class="mu">saldo líquido em reais</div></div></div>`+us.map(u=>unitH(u,16)).join("");}).join("");
+  AL+=U.filter(u=>!ik(u.ac)).map(u=>unitH(u,0)).join("");
   $("main").innerHTML=`<div class="card"><b>Contas</b> <button class="x" id="tb">🔁 Transferir</button>${AL||'<p class="mu">Nenhuma conta.</p>'}</div>
   <div class="card"><b>Nova conta</b>
    <label>Nome<input id="an"></label>
    <label>Tipo<select id="at">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label>
    <label>Moeda (3 letras)<input id="ac" value="BRL" maxlength="3"></label>
+   <label>Instituição (opcional)<input id="ain" list="ainl" maxlength="60" placeholder="Ex.: Itaú, Nubank, CEF"><datalist id="ainl">${instNames().map(n=>`<option value="${esc(n)}">`).join("")}</datalist></label>
    <label>Grupo internacional (opcional)<input id="ag" list="agl" placeholder="Ex.: ARQ Internacional"><datalist id="agl">${grpNames().map(n=>`<option value="${esc(n)}">`).join("")}</datalist></label>
    <label>Cartão: dia de fechamento<input id="acl" type="number" min="1" max="31"></label>
    <label>Cartão: dia de vencimento<input id="adu" type="number" min="1" max="31"></label>
@@ -36,7 +48,7 @@ async function viewAcc(){
     if(card&&!(cl>=1&&cl<=31&&du>=1&&du<=31))return $("amsg").textContent="Cartão: informe os dias de fechamento e vencimento (1 a 31).";
     const gn=$("ag").value.trim();
     if(gn&&!["checking","cash"].includes($("at").value))return $("amsg").textContent="Grupo internacional só para conta corrente ou dinheiro.";
-    const {data:na,error}=await sb.from("accounts").insert({household_id:S.hid,name:$("an").value,type:$("at").value,currency:$("ac").value.toUpperCase(),group_name:gn||null}).select("id").single();
+    const {data:na,error}=await sb.from("accounts").insert({household_id:S.hid,name:$("an").value,type:$("at").value,currency:$("ac").value.toUpperCase(),group_name:gn||null,institution:$("ain").value.trim()||null}).select("id").single();
     if(error)return $("amsg").textContent=error.message.includes("accounts_group_uq")?"Já existe, neste grupo, uma conta ativa nesta moeda.":error.message;
     if(card){const r=await sb.from("credit_cards").insert({household_id:S.hid,account_id:na.id,closing_day:cl,due_day:du});if(r.error)return $("amsg").textContent="Conta criada, mas o cartão não: "+r.error.message;await sb.from("card_holders").insert({household_id:S.hid,account_id:na.id,name:"Titular"});}
     await loadRef();viewAcc();};
@@ -51,6 +63,9 @@ async function viewAcc(){
   document.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>{S.fatAcc=b.dataset.pay;S.fatMon=null;go("fat");});
 }
 const f2=v=>Math.abs(Number(v)).toFixed(2).replace(".",",");
+/* instituição (banco ou emissor) da conta: chave para comparar e nomes já usados, para as sugestões */
+const ik=a=>a&&a.institution?String(a.institution).trim().toLowerCase():"";
+const instNames=()=>{const m={};S.accounts.forEach(a=>{const k=ik(a);if(k&&!m[k])m[k]=a.institution.trim();});return Object.values(m).sort((a,b)=>a.localeCompare(b,"pt-BR"));};
 const dper=()=>{const t=today(),y=+t.slice(0,4),m0=t.slice(0,8)+"01";
   if(S.dper==="year")return [y+"-01-01",(y+1)+"-01-01"];
   if(S.dper==="all")return ["1900-01-01","3000-01-01"];

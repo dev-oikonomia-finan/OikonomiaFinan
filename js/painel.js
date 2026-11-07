@@ -62,6 +62,10 @@ async function viewDash(){
   const isMulta=x=>x.only_dismissal&&B.some(a=>a.account_id===x.account_id&&a.type==="fgts");
   const prevOf=(a,m)=>hasP(a.account_id)?PQ.filter(x=>x.account_id===a.account_id&&(m==="all"||(m==="nm"&&!isMulta(x))||!x.only_dismissal)).reduce((t,x)=>t+Number(x.value||0),0):Number(a.balance_base||0);
   const prevAll=B.filter(isPrev).reduce((t,a)=>t+prevOf(a,"all"),0),prevOwn=B.filter(isPrev).reduce((t,a)=>t+prevOf(a,"own"),0),prevNm=B.filter(isPrev).reduce((t,a)=>t+prevOf(a,"nm"),0),prevMulta=prevAll-prevNm,prevTot=pvm==="own"?prevOwn:pvm==="nm"?prevNm:prevAll;
+  /* foto mensal do patrimônio (patrimony_snapshots, projecoes_salvas.sql): grava ou atualiza a do mês atual, só quando tudo foi lido sem erro
+     e o valor mudou desde a última gravação deste aparelho; erro (ex.: script ainda não rodado) é ignorado */
+  if(bl.invSum&&!(pq&&pq.error)){const r2=v=>Math.round(v*100)/100,FT={household_id:hid,month:today().slice(0,8)+"01",value_base:r2(sum(a=>!isPrev(a))),prev_own:r2(prevOwn),prev_all:r2(prevAll),prev_nm:r2(prevNm)},fk="pfoto_"+hid,sig=JSON.stringify(FT);
+    if(lsGet(fk)!==sig)sb.from("patrimony_snapshots").upsert(FT,{onConflict:"household_id,month"}).then(r=>{if(r&&!r.error)lsSet(fk,sig);});}
   const temPrev=B.some(isPrev),geral=sum(a=>!isPrev(a))+(incPrev?prevTot:0),disp=sum(a=>["checking","cash"].includes(a.type)),cart=sum(a=>a.type==="credit_card"),ben=sum(a=>a.type==="benefit"),demais=geral-disp-cart-ben-(incPrev?prevTot:0);
   /* compromissos previstos (Fim do mês / Tudo) */
   const loanG=new Set((S.loans||[]).map(l=>l.installment_group_id)),FU=(fu&&fu.data)||[],fv=t=>Number(t.amount)*Number(t.fx_rate_to_base||1);
@@ -80,7 +84,7 @@ async function viewDash(){
   (ip.data||[]).filter(p=>p.is_active&&iok(p.account_id)&&Number(p.qty)>0).forEach(p=>{icl[p.class]=(icl[p.class]||0)+Number(p.current_value||0);});
   const invTot=cashI+Object.keys(icl).reduce((t,k)=>t+icl[k],0),ipc=v=>invTot>0?" "+(v/invTot*100).toFixed(1).replace(".",",")+"%":"";
   const invHtml=IA.length?`<div class="card"><div class="row"><b>Investimentos</b><b class="ddv" data-dd="inv">${mm(invTot)}</b></div>
-    ${ip.error?'<p class="mu">Não foi possível ler as posições por classe.</p>':Object.keys(icl).filter(k=>Math.abs(icl[k])>=0.005).map(k=>`<div class="row"><span>${ICLS[k]||k}<span class="mu">${ipc(icl[k])}</span></span><span class="ddv" data-dd="icl:${k}">${mm(icl[k])}</span></div>`).join("")}
+    ${ip.error?'<p class="mu">Não foi possível ler as posições por classe.</p>':Object.keys(icl).sort((a,b)=>clsR(a)-clsR(b)).filter(k=>Math.abs(icl[k])>=0.005).map(k=>`<div class="row"><span>${ICLS[k]||k}<span class="mu">${ipc(icl[k])}</span></span><span class="ddv" data-dd="icl:${k}">${mm(icl[k])}</span></div>`).join("")}
     <div class="row"><span>Caixa e poupança (sem ativo)<span class="mu">${ipc(cashI)}</span></span><span class="ddv ${cashI<0?"neg":""}" data-dd="icash">${mm(cashI)}</span></div>
     <button class="sec" id="gi">📈 Abrir Investimentos</button></div>`:"";
   const nU=(un.data||[]).length,totU=(un.data||[]).reduce((t,x)=>t-Number(x.amount)*Number(x.fx_rate_to_base||1),0);
@@ -179,7 +183,7 @@ async function viewDash(){
           +L.map(x=>`<div class="row" style="padding-left:14px"><span class="mu">${esc(x.name)}${x.only_dismissal?" · potencial":" · resgatável"}${isMulta(x)?" · multa FGTS":""}${x.date?" · "+fdt(x.date):" · sem saldo"}</span><span class="mu">${mm(x.value)}</span></div>`).join("");}).join("")
       +`<div class="row" style="border-top:2px solid var(--ac)"><span>Resgatável</span><b>${mm(prevOwn)}</b></div><div class="row"><span>Potencial</span><b>${mm(prevAll-prevOwn)}</b></div><div class="row"><span>Resgatável + potencial</span><b>${mm(prevAll)}</b></div>${prevMulta?`<div class="row"><span>Resgatável + potencial − multa FGTS</span><b>${mm(prevNm)}</b></div>`:""}
       <div class="mu">${incPrev?`No Saldo geral: ${pvm==="own"?"só o resgatável":PVL[pvm]}.`:`Só exibido (${PVL[pvm]}), fora do Saldo geral.`} Último saldo informado de cada parte, sem descontar imposto nem taxa de resgate. Atualize em Contas > ⚙ da conta.</div>`],
-    inv:()=>["Investimentos",Object.keys(icl).filter(k=>Math.abs(icl[k])>=0.005).map(k=>`<div class="row"><span>${ICLS[k]||k}</span><span>${mm(icl[k])}</span></div>`).join("")+`<div class="row"><span>Caixa e poupança (sem ativo)</span><span>${mm(cashI)}</span></div><div class="row" style="border-top:2px solid var(--ac)"><b>Total</b><b>${mm(invTot)}</b></div><div class="mu">Toque no valor de cada classe ou do caixa no Painel para ver os ativos e as contas.</div>`],
+    inv:()=>["Investimentos",Object.keys(icl).sort((a,b)=>clsR(a)-clsR(b)).filter(k=>Math.abs(icl[k])>=0.005).map(k=>`<div class="row"><span>${ICLS[k]||k}</span><span>${mm(icl[k])}</span></div>`).join("")+`<div class="row"><span>Caixa e poupança (sem ativo)</span><span>${mm(cashI)}</span></div><div class="row" style="border-top:2px solid var(--ac)"><b>Total</b><b>${mm(invTot)}</b></div><div class="mu">Toque no valor de cada classe ou do caixa no Painel para ver os ativos e as contas.</div>`],
     icash:()=>["Caixa e poupança (sem ativo)",(bl.invSum||[]).filter(x=>iok(x.account_id)&&Math.abs(Number(x.cash||0))>=0.005).map(x=>`<div class="row"><span>${esc(ddAccName(x.account_id))}</span><span>${mm(x.cash)}</span></div>`).join("")+`<div class="row" style="border-top:2px solid var(--ac)"><b>Total</b><b>${mm(cashI)}</b></div>`]};
   const ddInv=k=>{const L=(ip.data||[]).filter(p=>p.is_active&&iok(p.account_id)&&Number(p.qty)>0&&p.class===k).sort((a,b)=>Number(b.current_value)-Number(a.current_value));
     return [ICLS[k]||k,L.map(p=>`<div class="row"><div><div>${esc(p.ticker||p.name||"Ativo")}</div><div class="mu">${p.ticker&&p.name?esc(p.name)+" · ":""}${esc(ddAccName(p.account_id))}</div></div><span>${mm(p.current_value)}</span></div>`).join("")+`<div class="row" style="border-top:2px solid var(--ac)"><b>Total</b><b>${mm(icl[k])}</b></div>`];};
@@ -228,8 +232,8 @@ async function viewDash(){
     c.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>{ddClose();S.fAcc=b.dataset.dl;S.fWal=null;S.fTrip=null;S.lper="mon";S.lmon=today().slice(0,8)+"01";S.lim=50;go("list");});});
   document.querySelectorAll("[data-mt]").forEach(el=>el.onclick=()=>{const [a,b]=el.dataset.mt.split("|");ddMeta(+a,+b);});
   $("gl").onclick=()=>go("loans");
-  /* Projeção: parte do Saldo geral exatamente como o Painel mostra (com a opção de previdência e FGTS escolhida); a tela fica na aba Painel (rota "proj") */
-  $("gpj").onclick=()=>{S.pjBase={geral,lab:temPrev?(incPrev?"com previdência e FGTS: "+PVL[pvm]:"sem previdência e FGTS"):""};go("proj");};
+  /* Projeção: parte do Saldo geral exatamente como o Painel mostra (com a opção de previdência e FGTS escolhida); a tela fica na aba Painel (rota "proj"); passa as partes (sem previdência e FGTS, resgatável, + potencial, − multa) e a opção do Painel */
+  $("gpj").onclick=()=>{S.pjBase={base:sum(a=>!isPrev(a)),own:prevOwn,all:prevAll,nm:prevNm,temPrev,pvDef:incPrev?pvm:"none"};go("proj");};
   if($("gi"))$("gi").onclick=()=>go("inv");
   if($("gu"))$("gu").onclick=()=>{S.lim=50;S.lper="all";go("list");};
 }
