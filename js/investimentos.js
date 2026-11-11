@@ -189,23 +189,38 @@ async function viewRent(){
   $("rpd").onchange=()=>{S.rpd=$("rpd").value;viewRent();};
 }
 
+/* Desde 11/11/2026: a tela Investimentos tem abas (Posições, Operações, Rendimentos, Ativos, Relatórios); S.itab = aba atual;
+   S.of / S.rf = filtros e quantidade carregada de Operações / Rendimentos (de 50 em 50); S.icl = classes recolhidas em Posições. */
+const INV_CSS="#itabs{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;margin:0 0 4px}#itabs button{width:auto;flex:none;margin:0;padding:8px 14px;border-radius:999px;border:1px solid #0f766e;background:transparent;color:#0f766e;font:inherit;font-size:.9rem;white-space:nowrap;cursor:pointer}#itabs button.on{background:#0f766e;color:#fff}details.icl>summary{display:flex;justify-content:space-between;gap:8px;cursor:pointer;padding:6px 0;list-style:none}details.icl>summary::-webkit-details-marker{display:none}details.icl>summary::before{content:'▸';margin-right:6px}details.icl[open]>summary::before{content:'▾'}.ifl{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ifl label{margin:0}details.ifd>summary{cursor:pointer;padding:2px 0}";
 async function viewInv(){
-  const hid=S.hid,y0=today().slice(0,4)+"-01-01",[sm,po,op,ri,ry,ast]=await Promise.all([
+  if(!document.getElementById("invcss")){const st=document.createElement("style");st.id="invcss";st.textContent=INV_CSS;document.head.appendChild(st);}
+  const hid=S.hid,y0=today().slice(0,4)+"-01-01",tb=S.itab||"pos",m=S.im||"",td=today(),
+    OF=S.of=S.of||{a:"",s:"",d1:"",d2:"",n:50},RF=S.rf=S.rf||{a:"",d1:"",d2:"",n:50},NO=Promise.resolve({data:[]}),
+    opQ=()=>{let q=sb.from("investment_operations").select("id,date,side,quantity,amount,fees,tax_withheld,net_balance_before,realized_result,investment_assets(name,ticker)").eq("household_id",hid);
+      if(OF.a)q=q.eq("asset_id",OF.a);if(OF.s)q=q.eq("side",OF.s);if(OF.d1)q=q.gte("date",OF.d1);if(OF.d2)q=q.lte("date",OF.d2);
+      return q.order("date",{ascending:false}).order("created_at",{ascending:false}).limit(OF.n+1);},
+    riQ=()=>{let q=sb.from("investment_income").select("id,date,kind,tax_withheld,net,investment_assets(name,ticker)").eq("household_id",hid);
+      if(RF.a)q=q.eq("asset_id",RF.a);if(RF.d1)q=q.gte("date",RF.d1);if(RF.d2)q=q.lte("date",RF.d2);
+      return q.order("date",{ascending:false}).order("created_at",{ascending:false}).limit(RF.n+1);},
+    [sm,po,ast,op,ri,ry]=await Promise.all([
     sb.from("investment_account_summary").select("*").eq("household_id",hid),
     sb.from("investment_positions").select("*").eq("household_id",hid).order("name"),
-    sb.from("investment_operations").select("id,date,side,quantity,amount,fees,tax_withheld,net_balance_before,realized_result,investment_assets(name,ticker)").eq("household_id",hid).order("date",{ascending:false}).order("created_at",{ascending:false}).limit(15),
-    sb.from("investment_income").select("id,date,kind,tax_withheld,net,investment_assets(name,ticker)").eq("household_id",hid).order("date",{ascending:false}).order("created_at",{ascending:false}).limit(15),
-    sb.from("investment_income").select("net").eq("household_id",hid).gte("date",y0),
-    sb.from("investment_assets").select("id,account_id,class,price_mode,ticker,name,cnpj,rate,maturity,is_active").eq("household_id",hid).order("name")]);
+    sb.from("investment_assets").select("id,account_id,class,price_mode,ticker,name,cnpj,rate,maturity,is_active").eq("household_id",hid).order("name"),
+    tb==="ops"&&!m?opQ():NO,
+    tb==="inc"&&!m?riQ():NO,
+    tb==="pos"&&!m?sb.from("investment_income").select("net").eq("household_id",hid).gte("date",y0):NO]);
   if(S.tab!=="inv")return;
-  const er=[sm,po,op,ri,ry,ast].find(r=>r.error);
+  const er=[sm,po,ast,op,ri,ry].find(r=>r.error);
   if(er){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button><p class="neg">${esc(er.error.message)}</p><p class="mu">Se a tabela ou a view não existe, rode o script investimentos_fase1.sql no Supabase.</p></div>`;$("bk").onclick=()=>go("acc");return;}
   const A=S.accounts.filter(a=>a.type==="investment"),ok=id=>A.some(a=>a.id===id),
-    P=(po.data||[]).filter(p=>p.is_active&&ok(p.account_id)),H=P.filter(p=>Number(p.qty)>0).sort((a,b)=>clsR(a.class)-clsR(b.class)||Number(b.current_value)-Number(a.current_value)),m=S.im||"",
-    T=(sm.data||[]).filter(x=>ok(x.account_id)),cls={},sum=k=>T.reduce((r,x)=>r+Number(x[k]||0),0),td=new Date().toISOString().slice(0,10);
+    P=(po.data||[]).filter(p=>p.is_active&&ok(p.account_id)),H=P.filter(p=>Number(p.qty)>0).sort((a,b)=>clsR(a.class)-clsR(b.class)||Number(b.current_value)-Number(a.current_value)),
+    T=(sm.data||[]).filter(x=>ok(x.account_id)),cls={},sum=k=>T.reduce((r,x)=>r+Number(x[k]||0),0);
   H.forEach(p=>{cls[p.class]=(cls[p.class]||0)+Number(p.current_value);});
   const sel=(id,o)=>`<select id="${id}">${o}</select>`,accO=A.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join(""),
-    clsO=Object.keys(ICLS).map(k=>`<option value="${k}">${ICLS[k]}</option>`).join("");
+    clsO=Object.keys(ICLS).map(k=>`<option value="${k}">${ICLS[k]}</option>`).join(""),
+    AL=(ast.data||[]).filter(a=>ok(a.account_id)).sort((a,b)=>clsR(a.class)-clsR(b.class)||String(a.ticker||a.name).localeCompare(String(b.ticker||b.name),"pt-BR")),
+    qtyOf=id=>Number((po.data||[]).find(p=>p.asset_id===id)?.qty||0),accN=id=>esc(A.find(a=>a.id===id)?.name||""),ea=m==="edit"?AL.find(x=>x.id===S.ie):null,
+    KIND={juros:"Juros",dividendo:"Dividendo",jcp:"JCP",rendimento_fii:"Rendimento de FII",outros:"Outros"};
   let form="";
   if(m==="asset")form=`<div class="card"><b>Novo ativo</b>
     <label>Conta de investimento${sel("ia",accO)}</label>
@@ -236,7 +251,6 @@ async function viewInv(){
     <label>Data<input id="qd" type="date" value="${td}"></label>
     ${H.map(p=>`<label>${esc(p.ticker||p.name)} · ${p.price_mode==="quote"?"cotação (R$ por unidade)":"valor total atualizado (R$)"}<input data-q="${p.asset_id}" inputmode="decimal" placeholder="${p.last_value!=null?nq(p.last_value):""}"></label>`).join("")||'<p class="mu">Nenhum ativo em carteira.</p>'}
     <button class="sec" id="qsv">Salvar</button><button class="lk" id="qcx">Cancelar</button></div>`;
-  const KIND={juros:"Juros",dividendo:"Dividendo",jcp:"JCP",rendimento_fii:"Rendimento de FII",outros:"Outros"};
   if(m==="inc")form=`<div class="card"><b>Novo rendimento</b>
     <label>Ativo${sel("ra",P.map(p=>`<option value="${p.asset_id}">${esc(p.ticker||p.name)} (${esc(A.find(a=>a.id===p.account_id)?.name||"")})</option>`).join(""))}</label>
     <label>Tipo${sel("rk",Object.keys(KIND).map(k=>`<option value="${k}">${KIND[k]}</option>`).join(""))}</label>
@@ -246,8 +260,6 @@ async function viewInv(){
     <p class="mu" id="rn"></p>
     <p class="mu">Entra no caixa da conta de investimento pelo valor líquido. Não é receita nem entra no Resultado do período.</p>
     <button class="sec" id="rsv">Salvar rendimento</button><button class="lk" id="rcx">Cancelar</button></div>`;
-  const AL=(ast.data||[]).filter(a=>ok(a.account_id)).sort((a,b)=>clsR(a.class)-clsR(b.class)||String(a.ticker||a.name).localeCompare(String(b.ticker||b.name),"pt-BR")),qtyOf=id=>Number((po.data||[]).find(p=>p.asset_id===id)?.qty||0),
-    accN=id=>esc(A.find(a=>a.id===id)?.name||""),ea=m==="edit"?AL.find(x=>x.id===S.ie):null;
   if(m==="edit"&&ea)form=`<div class="card"><b>Editar ativo</b>
     <p class="mu">${accN(ea.account_id)} · ${ICLS[ea.class]} (conta, classe e modo de valor não mudam)</p>
     <label>Ticker (código)<input id="et" value="${esc(ea.ticker||"")}" autocapitalize="characters"></label>
@@ -256,32 +268,86 @@ async function viewInv(){
     <label>Taxa (opcional)<input id="er" value="${esc(ea.rate||"")}"></label>
     <label>Vencimento (opcional)<input id="ev" type="date" value="${esc(ea.maturity||"")}"></label>
     <button class="sec" id="esv">Salvar alterações</button><button class="lk" id="iec">Cancelar</button></div>`;
+
+  /* conteúdo de cada aba (só aparece quando não há formulário aberto) */
+  const assetOpts=(cur)=>`<option value="">Todos os ativos</option>`+AL.map(a=>`<option value="${a.id}" ${a.id===cur?"selected":""}>${esc(a.ticker||a.name)}${a.ticker?" · "+esc(a.name):""}${a.is_active?"":" (inativo)"}</option>`).join(""),
+    nm=o=>esc(o.investment_assets?.ticker||o.investment_assets?.name||""),
+    sd=(v,n)=>`<option value="${v}" ${n===v?"selected":""}>`;
+  let body="";
+  if(tb==="pos"){
+    const tot=H.reduce((r,p)=>r+Number(p.current_value||0),0),ks=Object.keys(cls).sort((a,b)=>clsR(a)-clsR(b)),cl=S.icl||{};
+    body=`<div class="card"><button class="sec" id="nqt" style="margin-top:0" ${H.length?"":"disabled"}>Atualizar cotações</button><button class="sec" id="no" ${P.length?"":"disabled"}>+ Operação (compra ou venda)</button></div>
+    <div class="card"><div class="row"><span class="mu">Rendimentos no ano (líquido)</span><span class="pos">${mm((ry.data||[]).reduce((r,x)=>r+Number(x.net),0))}</span></div></div>
+    ${H.length?ks.map(k=>`<div class="card"><details class="icl" data-c="${k}" ${cl[k]?"":"open"}><summary><span><b>${ICLS[k]||k}</b> <span class="mu">${tot>0?(cls[k]/tot*100).toLocaleString("pt-BR",{maximumFractionDigits:1})+"%":""}</span></span><b>${mm(cls[k])}</b></summary>
+      ${H.filter(p=>p.class===k).map(p=>{const q=p.price_mode==="quote",res=Number(p.current_value)-Number(p.cost);
+      return `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(p.ticker||p.name)}</b><b>${mm(p.current_value)}</b></div>
+      <div class="mu">${esc(p.name)} · ${q?`${nq(p.qty)} un. · preço médio ${mm(p.avg_price)}${p.last_value!=null?" · cotação "+mm(p.last_value)+" ("+fdt(p.last_date)+")":" · sem cotação (usa o preço médio)"}`:`custo ${mm(p.cost)}${p.last_value!=null?" · atualizado em "+fdt(p.last_date):" · sem valor informado (usa o custo)"}`}</div>
+      <div class="${res<0?"neg":"pos"}" style="font-size:.85rem">Resultado ${mm(res)}</div></div>`;}).join("")}</details></div>`).join(""):'<div class="card"><p class="mu">Nenhum ativo em carteira. Cadastre o ativo na aba Ativos e lance a compra em Operações.</p></div>'}`;
+  }
+  if(tb==="ops"){
+    const rows=(op.data||[]).slice(0,OF.n),more=(op.data||[]).length>OF.n,act=!!(OF.a||OF.s||OF.d1||OF.d2);
+    body=`<div class="card"><button class="sec" id="no" style="margin-top:0" ${P.length?"":"disabled"}>+ Operação (compra ou venda)</button></div>
+    <div class="card"><details class="ifd" ${act?"open":""}><summary><b>🔎 Filtros</b>${act?' <span class="mu">(ativos)</span>':""}</summary>
+      <label>Ativo<select id="fo_a">${assetOpts(OF.a)}</select></label>
+      <div class="ifl"><label>Tipo<select id="fo_s">${sd("",OF.s)}Compras e vendas</option>${sd("buy",OF.s)}Só compras</option>${sd("sell",OF.s)}Só vendas e resgates</option></select></label><span></span>
+      <label>De<input id="fo_d1" type="date" value="${esc(OF.d1)}"></label><label>Até<input id="fo_d2" type="date" value="${esc(OF.d2)}"></label></div>
+      ${act?'<button class="lk" id="fo_clr">Limpar filtros</button>':""}</details></div>
+    <div class="card"><b>Operações</b> <span class="mu">${rows.length?"· "+rows.length+(more?" mais recentes":""):""}</span>
+      ${rows.length?rows.map(o=>`<div class="row"><div><div>${o.side==="buy"?"Compra":(o.net_balance_before!=null&&Number(o.amount)<Number(o.net_balance_before)?"Resgate parcial":"Venda")} · ${nm(o)}</div><div class="mu">${fdt(o.date)}${o.quantity?" · "+nq(o.quantity)+" un.":""}${Number(o.fees)?" · taxas "+mm(o.fees):""}${Number(o.tax_withheld)?" · IR retido "+mm(o.tax_withheld):""}${o.realized_result!=null?" · resultado "+mm(o.realized_result):""}</div></div><div style="white-space:nowrap"><span>${mm(o.amount)}</span><button class="x" data-od="${o.id}">✕</button></div></div>`).join(""):`<p class="mu">${act?"Nenhuma operação com esses filtros.":"Nenhuma operação lançada."}</p>`}
+      ${more?'<button class="sec" id="fo_more">Carregar mais 50</button>':""}</div>`;
+  }
+  if(tb==="inc"){
+    const rows=(ri.data||[]).slice(0,RF.n),more=(ri.data||[]).length>RF.n,act=!!(RF.a||RF.d1||RF.d2);
+    body=`<div class="card"><button class="sec" id="nr" style="margin-top:0" ${P.length?"":"disabled"}>+ Rendimento</button></div>
+    <div class="card"><details class="ifd" ${act?"open":""}><summary><b>🔎 Filtros</b>${act?' <span class="mu">(ativos)</span>':""}</summary>
+      <label>Ativo<select id="fr_a">${assetOpts(RF.a)}</select></label>
+      <div class="ifl"><label>De<input id="fr_d1" type="date" value="${esc(RF.d1)}"></label><label>Até<input id="fr_d2" type="date" value="${esc(RF.d2)}"></label></div>
+      ${act?'<button class="lk" id="fr_clr">Limpar filtros</button>':""}</details></div>
+    <div class="card"><b>Rendimentos</b> <span class="mu">${rows.length?"· "+rows.length+(more?" mais recentes":""):""}</span>
+      ${rows.length?rows.map(i=>`<div class="row"><div><div>${KIND[i.kind]||i.kind} · ${nm(i)}</div><div class="mu">${fdt(i.date)}${Number(i.tax_withheld)?" · IR retido "+mm(i.tax_withheld):""}</div></div><div style="white-space:nowrap"><span class="pos">${mm(i.net)}</span><button class="x" data-ri="${i.id}">✕</button></div></div>`).join(""):`<p class="mu">${act?"Nenhum rendimento com esses filtros.":"Nenhum rendimento lançado."}</p>`}
+      ${more?'<button class="sec" id="fr_more">Carregar mais 50</button>':""}</div>`;
+  }
+  if(tb==="ast"){
+    body=`<div class="card"><button class="sec" id="nb" style="margin-top:0">+ Ativo</button></div>
+    <div class="card"><b>Ativos cadastrados</b> <span class="mu">· ${AL.length}</span>
+      ${AL.length>6?'<label>Buscar<input id="as_q" placeholder="Ticker, nome, conta ou classe"></label>':""}
+      ${AL.length?AL.map(a=>`<div class="row" data-as="${esc(((a.ticker||"")+" "+a.name+" "+accN(a.account_id)+" "+(ICLS[a.class]||"")).toLowerCase())}" style="${a.is_active?"":"opacity:.6"}"><div><div><b>${esc(a.ticker||a.name)}</b>${a.ticker?" · "+esc(a.name):""}${a.is_active?"":" (inativo)"}</div>
+      <div class="mu">${accN(a.account_id)} · ${ICLS[a.class]}${a.rate?" · "+esc(a.rate):""}${a.maturity?" · venc. "+fdt(a.maturity):""}</div></div>
+      <div style="text-align:right;white-space:nowrap"><button class="x" data-ae="${a.id}" title="Editar">✏️</button><button class="x" data-ai="${a.id}">${a.is_active?"Inativar":"Reativar"}</button><button class="x" data-ax="${a.id}" title="Excluir">✕</button></div></div>`).join(""):'<p class="mu">Nenhum ativo cadastrado.</p>'}</div>`;
+  }
+  if(tb==="rel"){
+    body=`<div class="card"><button class="sec" id="nir" style="margin-top:0">Relatório de IR</button><p class="mu">Bens e Direitos, rendimentos do ano, vendas e resgates de renda fixa.</p>
+    <button class="sec" id="nrt">Rentabilidade</button><p class="mu">Ganho e taxa anualizada por ativo, classe e carteira, por período.</p></div>`;
+  }
+  const TABS=[["pos","📊 Posições"],["ops","🔁 Operações"],["inc","💰 Rendimentos"],["ast","🏷️ Ativos"],["rel","📑 Relatórios"]];
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Investimentos</b>
     ${A.length?`<div class="row" style="margin-top:8px"><b>Patrimônio</b><b>${mm(sum("total"))}</b></div>
-    <div class="row"><span class="mu">Caixa (ainda não investido)</span><span>${mm(sum("cash"))}</span></div>
-    <div class="row"><span class="mu">Em ativos</span><span>${mm(sum("in_assets"))}</span></div>
-    <div class="row"><span class="mu">Rendimentos no ano (líquido)</span><span class="pos">${mm((ry.data||[]).reduce((r,x)=>r+Number(x.net),0))}</span></div>
-    ${Object.keys(cls).sort((a,b)=>clsR(a)-clsR(b)).map(k=>`<div class="row" style="padding-left:14px"><span class="mu">${ICLS[k]}</span><span>${mm(cls[k])}</span></div>`).join("")}`
+    <div class="mu" style="font-size:.85rem">Caixa ${mm(sum("cash"))} · Em ativos ${mm(sum("in_assets"))}</div>`
     :'<p class="mu">Crie em Contas uma conta do tipo Investimento (em reais) e transfira dinheiro para ela. Cada aporte é uma transferência.</p>'}</div>
-  ${A.length&&!m?`<div class="card"><button class="sec" id="nb" style="margin-top:0">+ Ativo</button><button class="sec" id="no" ${P.length?"":"disabled"}>+ Operação (compra ou venda)</button><button class="sec" id="nq" ${H.length?"":"disabled"}>Atualizar cotações</button><button class="sec" id="nr" ${P.length?"":"disabled"}>+ Rendimento</button><button class="sec" id="nir">Relatório de IR</button><button class="sec" id="nrt">Rentabilidade</button></div>`:""}
-  ${form}
-  ${H.length?`<div class="card"><b>Posições</b>${H.map(p=>{const q=p.price_mode==="quote",res=Number(p.current_value)-Number(p.cost);
-    return `<div class="row" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(p.ticker||p.name)}</b><b>${mm(p.current_value)}</b></div>
-    <div class="mu">${esc(p.name)} · ${ICLS[p.class]} · ${q?`${nq(p.qty)} un. · preço médio ${mm(p.avg_price)}${p.last_value!=null?" · cotação "+mm(p.last_value)+" ("+fdt(p.last_date)+")":" · sem cotação (usa o preço médio)"}`:`custo ${mm(p.cost)}${p.last_value!=null?" · atualizado em "+fdt(p.last_date):" · sem valor informado (usa o custo)"}`}</div>
-    <div class="${res<0?"neg":"pos"}" style="font-size:.85rem">Resultado ${mm(res)}</div></div>`;}).join("")}</div>`:""}
-  ${(op.data||[]).length?`<div class="card"><b>Últimas operações</b>${op.data.map(o=>`<div class="row"><div><div>${o.side==="buy"?"Compra":(o.net_balance_before!=null&&Number(o.amount)<Number(o.net_balance_before)?"Resgate parcial":"Venda")} · ${esc(o.investment_assets?.ticker||o.investment_assets?.name||"")}</div><div class="mu">${fdt(o.date)}${o.quantity?" · "+nq(o.quantity)+" un.":""}${Number(o.fees)?" · taxas "+mm(o.fees):""}${Number(o.tax_withheld)?" · IR retido "+mm(o.tax_withheld):""}${o.realized_result!=null?" · resultado "+mm(o.realized_result):""}</div></div><div style="white-space:nowrap"><span>${mm(o.amount)}</span><button class="x" data-od="${o.id}">✕</button></div></div>`).join("")}</div>`:""}`;
-  if((ri.data||[]).length)$("main").insertAdjacentHTML("beforeend",`<div class="card"><b>Últimos rendimentos</b>${ri.data.map(i=>`<div class="row"><div><div>${KIND[i.kind]} · ${esc(i.investment_assets?.ticker||i.investment_assets?.name||"")}</div><div class="mu">${fdt(i.date)}${Number(i.tax_withheld)?" · IR retido "+mm(i.tax_withheld):""}</div></div><div style="white-space:nowrap"><span class="pos">${mm(i.net)}</span><button class="x" data-ri="${i.id}">✕</button></div></div>`).join("")}</div>`);
-  if(A.length&&AL.length)$("main").insertAdjacentHTML("beforeend",`<div class="card"><b>Ativos cadastrados</b>${AL.map(a=>`<div class="row" style="${a.is_active?"":"opacity:.6"}"><div><div><b>${esc(a.ticker||a.name)}</b>${a.ticker?" · "+esc(a.name):""}${a.is_active?"":" (inativo)"}</div>
-    <div class="mu">${accN(a.account_id)} · ${ICLS[a.class]}${a.rate?" · "+esc(a.rate):""}${a.maturity?" · venc. "+fdt(a.maturity):""}</div></div>
-    <div style="text-align:right;white-space:nowrap"><button class="x" data-ae="${a.id}" title="Editar">✏️</button><button class="x" data-ai="${a.id}">${a.is_active?"Inativar":"Reativar"}</button><button class="x" data-ax="${a.id}" title="Excluir">✕</button></div></div>`).join("")}</div>`);
-  const rl=()=>{S.im="";S.ie="";viewInv();};
+  ${A.length?`<div id="itabs">${TABS.map(([k,l])=>`<button data-it="${k}" class="${k===tb?"on":""}">${l}</button>`).join("")}</div>`:""}
+  ${A.length?(form||body):""}`;
+
+  const rl=()=>{S.im="";S.ie="";viewInv();},keep=async()=>{const y=window.scrollY;await viewInv();window.scrollTo(0,y);},
+    okd=v=>!v||(Number(v.slice(0,4))>=1900&&Number(v.slice(0,4))<=2100);
   $("bk").onclick=()=>go("acc");
+  document.querySelectorAll("[data-it]").forEach(b=>b.onclick=()=>{S.itab=b.dataset.it;S.im="";S.ie="";viewInv();});
   if($("nb"))$("nb").onclick=()=>{S.im="asset";viewInv();};
   if($("no"))$("no").onclick=()=>{S.im="op";viewInv();};
-  if($("nq"))$("nq").onclick=()=>{S.im="quo";viewInv();};
+  if($("nqt"))$("nqt").onclick=()=>{S.im="quo";viewInv();};
   if($("nr"))$("nr").onclick=()=>{S.im="inc";viewInv();};
   if($("nir"))$("nir").onclick=()=>go("ir");
   if($("nrt"))$("nrt").onclick=()=>go("rent");
+  document.querySelectorAll("details.icl").forEach(d=>d.ontoggle=()=>{S.icl=S.icl||{};S.icl[d.dataset.c]=!d.open;});
+  /* filtros e "carregar mais" de Operações e Rendimentos */
+  const fo=()=>{if(!okd($("fo_d1").value)||!okd($("fo_d2").value))return;S.of={a:$("fo_a").value,s:$("fo_s").value,d1:$("fo_d1").value,d2:$("fo_d2").value,n:50};viewInv();},
+    fr=()=>{if(!okd($("fr_d1").value)||!okd($("fr_d2").value))return;S.rf={a:$("fr_a").value,d1:$("fr_d1").value,d2:$("fr_d2").value,n:50};viewInv();};
+  ["fo_a","fo_s","fo_d1","fo_d2"].forEach(i=>{if($(i))$(i).onchange=fo;});
+  ["fr_a","fr_d1","fr_d2"].forEach(i=>{if($(i))$(i).onchange=fr;});
+  if($("fo_clr"))$("fo_clr").onclick=()=>{S.of={a:"",s:"",d1:"",d2:"",n:50};viewInv();};
+  if($("fr_clr"))$("fr_clr").onclick=()=>{S.rf={a:"",d1:"",d2:"",n:50};viewInv();};
+  if($("fo_more"))$("fo_more").onclick=()=>{OF.n+=50;keep();};
+  if($("fr_more"))$("fr_more").onclick=()=>{RF.n+=50;keep();};
+  if($("as_q"))$("as_q").oninput=()=>{const t=$("as_q").value.trim().toLowerCase();document.querySelectorAll("[data-as]").forEach(r=>{r.style.display=r.dataset.as.includes(t)?"":"none";});};
   ["icx","ocx","qcx","rcx","iec"].forEach(i=>{if($(i))$(i).onclick=rl;});
   if($("ic"))$("ic").onchange=()=>{$("ip").value=["acoes","fiis","cripto"].includes($("ic").value)?"quote":"total";};
   if($("ic"))$("ic").onchange();
@@ -323,10 +389,10 @@ async function viewInv(){
     if(error){alert("Erro: "+error.message);return;}rl();};
   document.querySelectorAll("[data-ri]").forEach(b=>b.onclick=async()=>{if(!confirm("Apagar este rendimento? O caixa da conta será recalculado."))return;
     const {error}=await sb.from("investment_income").delete().eq("id",b.dataset.ri);
-    if(error)alert("Erro: "+error.message);viewInv();});
+    if(error)alert("Erro: "+error.message);keep();});
   document.querySelectorAll("[data-od]").forEach(b=>b.onclick=async()=>{if(!confirm("Apagar esta operação? O preço médio será recalculado."))return;
     const {error}=await sb.from("investment_operations").delete().eq("id",b.dataset.od);
-    if(error)alert("Erro: "+error.message);viewInv();});
+    if(error)alert("Erro: "+error.message);keep();});
   document.querySelectorAll("[data-ae]").forEach(b=>b.onclick=()=>{S.im="edit";S.ie=b.dataset.ae;viewInv();});
   if($("esv"))$("esv").onclick=async()=>{const n=$("en").value.trim();
     if(!n){alert("Informe o nome.");return;}
@@ -338,13 +404,13 @@ async function viewInv(){
       if(!confirm("Inativar este ativo? Ele sai das listas de operação e rendimento, mas o histórico continua guardado."))return;
     }
     const {error}=await sb.from("investment_assets").update({is_active:!a.is_active}).eq("id",a.id);
-    if(error)alert("Erro: "+error.message);viewInv();});
+    if(error)alert("Erro: "+error.message);keep();});
   document.querySelectorAll("[data-ax]").forEach(b=>b.onclick=async()=>{const a=AL.find(x=>x.id===b.dataset.ax);if(!a)return;
     const cnt=t=>sb.from(t).select("id",{count:"exact",head:true}).eq("asset_id",a.id),
       [o,i,q]=await Promise.all([cnt("investment_operations"),cnt("investment_income"),cnt("investment_snapshots")]),e=[o,i,q].find(r=>r.error);
     if(e){alert("Erro: "+e.error.message);return;}
-    if(o.count>0||i.count>0){alert("Não dá para excluir: este ativo tem "+o.count+" operação(ões) e "+i.count+" rendimento(s). Apague esses lançamentos primeiro (botão ✕ nas listas; isso muda o caixa da conta) ou, se não há posição, apenas inative o ativo.");return;}
+    if(o.count>0||i.count>0){alert("Não dá para excluir: este ativo tem "+o.count+" operação(ões) e "+i.count+" rendimento(s). Apague esses lançamentos primeiro (aba Operações ou Rendimentos, botão ✕; isso muda o caixa da conta) ou, se não há posição, apenas inative o ativo.");return;}
     if(!confirm("Excluir o ativo "+(a.ticker||a.name)+" definitivamente?"+(q.count>0?" As "+q.count+" cotação(ões) registrada(s) serão apagadas junto.":"")))return;
     const {error}=await sb.from("investment_assets").delete().eq("id",a.id);
-    if(error)alert("Erro: "+error.message);viewInv();});
+    if(error)alert("Erro: "+error.message);keep();});
 }
