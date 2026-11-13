@@ -1,11 +1,11 @@
-/* ================= LANÇAR EM LOTE (Etapa 1: conta corrente e cartão) ================= */
+/* ================= LANÇAR EM LOTE (Etapa 1: conta corrente e cartão; desde 11/11/2026 também conta vale com carteira) ================= */
 /* Várias linhas por seção; cada seção tem UMA conta. Linha vazia é ignorada. Confirmar valida tudo e grava
    num ÚNICO insert em transactions (parcelas geradas aqui, como a compra em andamento): grava tudo ou nada. */
 const LOTE_CSS=`<style>
 .lbox{container-type:inline-size}
 .lr{display:grid;grid-template-columns:1fr 1fr;gap:4px 6px;padding:8px 0;border-bottom:1px solid var(--bd)}
 .lr input,.lr select{margin:0;width:100%;box-sizing:border-box;min-width:0}
-.lr .ld{order:1}.lr .lv{order:2}.lr .lds{order:3}.lr .lc{order:4}.lr .lp{order:5}.lr .lh{order:6}.lr .lm{order:9;grid-column:1/-1}
+.lr .ld{order:1}.lr .lv{order:2}.lr .lds{order:3}.lr .lc{order:4}.lr .lp{order:5}.lr .lh{order:6}.lr .lw{order:5;grid-column:1/-1}.lr .lm{order:9;grid-column:1/-1}
 .lr.err{background:rgba(220,38,38,.08)}
 .lhd{display:none}
 /* colunas pela largura do QUADRO (container query), não da janela: se não couber, fica o layout de duas linhas */
@@ -19,6 +19,9 @@ const LOTE_CSS=`<style>
  .lr.cdh,.lhd.cdh{grid-template-columns:140px minmax(140px,3fr) minmax(130px,2fr) 110px 64px minmax(110px,1fr)}
  .lhd.cdh{display:grid}.lr.cdh .ld{order:1}.lr.cdh .lds{order:2}.lr.cdh .lc{order:3}.lr.cdh .lv{order:4}.lr.cdh .lp{order:5}.lr.cdh .lh{order:6}}
 .lhd{gap:4px 6px;font-size:.8rem}
+@container (min-width:760px){
+ .lr.vl,.lhd.vl{grid-template-columns:140px minmax(140px,3fr) minmax(130px,2fr) minmax(130px,2fr) 110px}
+ .lhd.vl{display:grid}.lr.vl .ld{order:1}.lr.vl .lds{order:2}.lr.vl .lc{order:3}.lr.vl .lw{order:4;grid-column:auto}.lr.vl .lv{order:5}}
 .lr.ivt,.lr.ivo,.lr.ivr{grid-template-columns:1fr 1fr}
 .lr.ivt>*,.lr.ivo>*,.lr.ivr>*{order:0}.lr .lm{order:9}
 .ivg{margin-top:12px}
@@ -29,7 +32,8 @@ const LOTE_CSS=`<style>
 .lf input,.lf select{margin:0;width:100%;box-sizing:border-box;min-width:0}
 .lf .fn{grid-column:1/-1;display:flex;gap:8px;align-items:center}.lf .fn input{width:auto}.lf .fm{grid-column:1/-1}.lf.err{background:rgba(220,38,38,.08)}
 .lf.dim .fn b{opacity:.6}
-@container (min-width:820px){.lf{grid-template-columns:minmax(160px,1.4fr) 140px 110px 64px minmax(120px,1fr) minmax(120px,1fr)}.lf .fn{grid-column:auto}}
+.lf .fx2{display:flex;gap:4px;min-width:0}.lf .fx2 select{flex:1 1 0;min-width:0}.lf .fx2.w{grid-column:1/-1}
+@container (min-width:820px){.lf{grid-template-columns:minmax(160px,1.4fr) 140px 110px 64px minmax(120px,1fr) minmax(120px,1fr)}.lf .fn{grid-column:auto}.lf .fx2.w{grid-column:auto}}
 </style>`;
 /* tela larga só no lote: o nucleo liga body.lote-wide ao entrar em "lote" e desliga ao sair */
 document.head.insertAdjacentHTML("beforeend",`<style>
@@ -39,20 +43,22 @@ body.lote-wide main,body.lote-wide #main{width:auto!important}
 const loteCats=()=>'<option value="">Categoria</option><optgroup label="Despesas">'+catOpts("expense")+'</optgroup><optgroup label="Receitas">'+catOpts("income")+'</optgroup>';
 const loteOk=d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&+d.slice(0,4)>=1900&&+d.slice(0,4)<=2100;
 function viewLote(msg){
-  const CC=S.accounts.filter(a=>a.type==="checking"||a.type==="cash"),CD=S.accounts.filter(a=>a.type==="credit_card"),IA=S.accounts.filter(a=>a.type==="investment");
+  const CC=S.accounts.filter(a=>a.type==="checking"||a.type==="cash"),CD=S.accounts.filter(a=>a.type==="credit_card"),IA=S.accounts.filter(a=>a.type==="investment"),VL=S.accounts.filter(a=>a.type==="benefit");
   if(IA.length)S.loteAssetsP=sb.from("investment_assets").select("id,account_id,class,price_mode,ticker,name,is_active").eq("household_id",S.hid).order("name");
-  if(!S.loteSecs){S.loteSecs=[];if(CC.length)S.loteSecs.push({t:"cc",acc:S.lastAcc&&CC.some(a=>a.id===S.lastAcc)?S.lastAcc:CC[0].id});if(CD.length)S.loteSecs.push({t:"cd",acc:CD[0].id});if(IA.length)S.loteSecs.push({t:"iv",acc:IA[0].id});}
-  S.loteSecs=S.loteSecs.filter(x=>!x.gone&&(x.t==="cc"?CC:x.t==="cd"?CD:IA).some(a=>a.id===x.acc));
+  if(!S.loteSecs){S.loteSecs=[];if(CC.length)S.loteSecs.push({t:"cc",acc:S.lastAcc&&CC.some(a=>a.id===S.lastAcc)?S.lastAcc:CC[0].id});if(CD.length)S.loteSecs.push({t:"cd",acc:CD[0].id});if(VL.length)S.loteSecs.push({t:"vl",acc:VL[0].id});if(IA.length)S.loteSecs.push({t:"iv",acc:IA[0].id});}
+  S.loteSecs=S.loteSecs.filter(x=>!x.gone&&(x.t==="cc"?CC:x.t==="cd"?CD:x.t==="vl"?VL:IA).some(a=>a.id===x.acc));
   $("main").innerHTML=LOTE_CSS+`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Lançar em lote</b>
-    <p class="mu" style="margin:6px 0">Digite várias linhas e grave tudo de uma vez. Linha vazia é ignorada. A categoria define se é despesa ou receita. No cartão, cada compra cai na fatura pela data (como em Lançar); parcelas: informe o total e o nº de parcelas.</p>
+    <p class="mu" style="margin:6px 0">Digite várias linhas e grave tudo de uma vez. Linha vazia é ignorada. A categoria define se é despesa ou receita. No cartão, cada compra cai na fatura pela data (como em Lançar); parcelas: informe o total e o nº de parcelas. No vale (benefício), escolha a carteira de cada linha (sem parcelas).</p>
     <datalist id="lqs">${S.qs.map(q=>`<option value="${esc(q.name)}">`).join("")}</datalist></div>
    <div id="lfx"></div><div id="lsecs"></div>
-   <div class="card">${CC.length?'<button class="sec" id="lacc" style="margin-top:0">＋ Outra conta corrente</button>':""}${CD.length?'<button class="sec" id="lacd">＋ Outro cartão</button>':""}${IA.length?'<button class="sec" id="laiv">＋ Investimentos</button>':""}
+   <div class="card">${CC.length?'<button class="sec" id="lacc" style="margin-top:0">＋ Outra conta corrente</button>':""}${CD.length?'<button class="sec" id="lacd">＋ Outro cartão</button>':""}${VL.length?'<button class="sec" id="lavl">＋ Vale / benefício</button>':""}${IA.length?'<button class="sec" id="laiv">＋ Investimentos</button>':""}
     <button class="pri" id="lgo">Confirmar e gravar</button><p id="ltm" class="${msg?"pos":"neg"}">${esc(msg||"")}</p></div>`;
   $("bk").onclick=()=>go("add");
   loteFx();S.loteSecs.forEach((x,i)=>loteSec(i));
+  if(VL.length)loadWallets().then(()=>{document.querySelectorAll("#lfx .lf").forEach(r=>{if(r._fw)r._fw(r,r.querySelector(".fw").value);});});
   if($("lacc"))$("lacc").onclick=()=>{S.loteSecs.push({t:"cc",acc:CC[0].id});loteSec(S.loteSecs.length-1);};
   if($("lacd"))$("lacd").onclick=()=>{S.loteSecs.push({t:"cd",acc:CD[0].id});loteSec(S.loteSecs.length-1);};
+  if($("lavl"))$("lavl").onclick=()=>{S.loteSecs.push({t:"vl",acc:VL[0].id});loteSec(S.loteSecs.length-1);};
   if($("laiv"))$("laiv").onclick=()=>{S.loteSecs.push({t:"iv",acc:IA[0].id});loteSec(S.loteSecs.length-1);};
   $("lgo").onclick=loteSave;
 }
@@ -61,12 +67,12 @@ async function loteFx(){
   const box=$("lfx");if(!box)return;if(!S.loteMon)S.loteMon=today().slice(0,8)+"01";
   const m0=S.loteMon,mo=+m0.slice(5,7),dim=new Date(+m0.slice(0,4),mo,0).getDate(),dd=q=>m0.slice(0,8)+String(Math.min(q.due_day||1,dim)).padStart(2,"0");
   const FX=S.qs.filter(q=>q.recurrence==="monthly"||(q.recurrence==="yearly"&&q.due_month===mo)).sort((a,b)=>(a.due_day||0)-(b.due_day||0)||a.name.localeCompare(b.name,"pt-BR"));
-  const AC=S.accounts.filter(a=>["checking","cash","credit_card"].includes(a.type)),defA=q=>AC.some(a=>a.id===q.default_account_id)?q.default_account_id:(S.lastAcc&&AC.some(a=>a.id===S.lastAcc)?S.lastAcc:(AC[0]||{}).id);
+  const AC=S.accounts.filter(a=>["checking","cash","credit_card","benefit"].includes(a.type)),defA=q=>AC.some(a=>a.id===q.default_account_id)?q.default_account_id:(S.lastAcc&&AC.some(a=>a.id===S.lastAcc)?S.lastAcc:(AC[0]||{}).id);
   box.innerHTML=`<div class="card"><div class="row" style="align-items:center;border:0;padding:0"><b>📌 Contas fixas</b><span><button class="x" id="lfp">‹</button> <b>${mlab(m0)}</b> <button class="x" id="lfn">›</button></span></div>
     <div class="lbox">${FX.length?FX.map(q=>`<div class="lf" data-q="${q.id}"><div class="fn"><input type="checkbox" class="fk"><b>${esc(q.name)}</b><span class="mu">${q.recurrence==="monthly"?"mensal":"anual"}</span></div>
       <input type="date" class="fd" value="${dd(q)}"><input class="fv" inputmode="decimal" placeholder="Valor" value="${fa(q.default_amount)}">
       <input class="fp" type="number" min="1" max="48" inputmode="numeric" placeholder="${q.recurrence==="yearly"?"Parc.":"—"}" value="${q.recurrence==="yearly"&&q.installments?q.installments:""}" ${q.recurrence==="yearly"?"":"disabled"}>
-      <select class="fa">${AC.map(a=>`<option value="${a.id}" ${a.id===defA(q)?"selected":""}>${esc(a.name)}</option>`).join("")}</select>
+      <div class="fx2"><select class="fa">${AC.map(a=>`<option value="${a.id}" ${a.id===defA(q)?"selected":""}>${esc(a.name)}</option>`).join("")}</select><select class="fw" hidden></select></div>
       <select class="fc">${loteCats()}</select><div class="mu fm"></div></div>`).join("")
       :`<p class="mu">Nenhuma conta fixa para ${mlab(m0)}. Cadastre em Lançar > ⚙ Gerenciar atalhos (Conta fixa: Mensal ou Anual).</p>`}</div>
     ${FX.length?'<p class="mu">Marque as que quer lançar e confira o valor. Nas anuais, "Parc." gera as parcelas mês a mês a partir deste mês (valor = total).</p>':""}</div>`;
@@ -74,7 +80,13 @@ async function loteFx(){
   FX.forEach(q=>{const r=box.querySelector(`[data-q="${q.id}"]`),c=r.querySelector(".fc");if(q.category_id&&[...c.options].some(o=>o.value===q.category_id))c.value=q.category_id;
     const inf=()=>{if(r.classList.contains("err"))return;const m=r.querySelector(".fm"),np=parseInt(r.querySelector(".fp").value)||1,v=num(r.querySelector(".fv").value||"");
       m.textContent=(r.dataset.ja?r.dataset.ja+" ":"")+(np>=2&&v>0?`${np}x de aprox. ${fmt(v/np,"BRL")}, até ${mlab(mAdd(m0,np-1))}`:"");};
-    r.querySelectorAll(".fd,.fv,.fp,.fa,.fc").forEach(f=>f.addEventListener("input",()=>{r.classList.remove("err");if(f.classList.contains("fv")||f.classList.contains("fd"))r.querySelector(".fk").checked=true;inf();}));
+    /* conta vale: aparece o seletor de carteira (a última usada na conta vem escolhida; o saldo da carteira vai ao lado do nome) */
+    const fw=(r2,keep)=>{const a=S.accounts.find(z=>z.id===r2.querySelector(".fa").value),w=r2.querySelector(".fw"),bx=r2.querySelector(".fx2");
+      if(!a||a.type!=="benefit"){w.hidden=true;bx.classList.remove("w");w.innerHTML="";return;}
+      const L=walletsOf(a.id),cur=keep||lsGet("wal_"+a.id)||"";w.hidden=false;bx.classList.add("w");
+      w.innerHTML=L.length?L.map(k=>`<option value="${k.id}" ${k.id===cur?"selected":""}>${esc(k.name)} · ${fmt((S.wbal||{})[k.id]||0,a.currency)}</option>`).join(""):'<option value="">(sem carteiras)</option>';};
+    r._fw=fw;fw(r);r.querySelector(".fa").addEventListener("change",()=>fw(r));
+    r.querySelectorAll(".fd,.fv,.fp,.fa,.fc,.fw").forEach(f=>f.addEventListener("input",()=>{r.classList.remove("err");if(f.classList.contains("fv")||f.classList.contains("fd"))r.querySelector(".fk").checked=true;inf();}));
     r.querySelector(".fk").addEventListener("change",()=>{r.classList.remove("err");inf();});r._inf=inf;inf();});
   /* "já lançada": no mês, na conta do atalho, um lançamento com a mesma descrição (o lote grava o nome do atalho) ou com a mesma categoria e o valor padrão */
   if(FX.length){const ids=[...new Set(FX.map(defA).filter(Boolean))];
@@ -126,20 +138,23 @@ async function loteSecIv(i){
 }
 function loteSec(i){
   if(S.loteSecs[i].t==="iv")return loteSecIv(i);
-  const x=S.loteSecs[i],card=x.t==="cd",L=S.accounts.filter(a=>card?a.type==="credit_card":(a.type==="checking"||a.type==="cash"));
+  const x=S.loteSecs[i],card=x.t==="cd",vale=x.t==="vl",L=S.accounts.filter(a=>vale?a.type==="benefit":card?a.type==="credit_card":(a.type==="checking"||a.type==="cash"));
   const el=document.createElement("div");el.className="card";el.dataset.sec=i;
-  el.innerHTML=`<div class="row" style="border:0;padding:0"><b>${card?"💳 Cartão":"🏦 Conta corrente ou dinheiro"}</b><button class="x" data-lx="${i}" title="Tirar esta seção">✕</button></div>
+  el.innerHTML=`<div class="row" style="border:0;padding:0"><b>${vale?"🎟️ Vale / benefício":card?"💳 Cartão":"🏦 Conta corrente ou dinheiro"}</b><button class="x" data-lx="${i}" title="Tirar esta seção">✕</button></div>
     <label>${card?"Cartão":"Conta"}<select class="lsa">${L.map(a=>`<option value="${a.id}" ${a.id===x.acc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
     <div class="lbox"><div class="lhd"></div><div class="lrows"></div></div>
     <button class="lk lad">＋ linha</button><p class="mu lst"></p>`;
   $("lsecs").appendChild(el);
-  const kind=()=>{const H=holdersOf(x.acc);return card?(H.length>1?"cdh":"cd"):"cc";};
+  const kind=()=>{const H=holdersOf(x.acc);return vale?"vl":card?(H.length>1?"cdh":"cd"):"cc";};
+  const wn=k=>(walletsOf(x.acc).find(w=>w.id===k)||{}).name||"carteira",
+    wopts=()=>{const a=S.accounts.find(z=>z.id===x.acc)||{currency:"BRL"},cur=lsGet("wal_"+x.acc)||"",L2=walletsOf(x.acc);
+      return L2.length?L2.map(k=>`<option value="${k.id}" ${k.id===cur?"selected":""}>${esc(k.name)} · ${fmt((S.wbal||{})[k.id]||0,a.currency)}</option>`).join(""):'<option value="">(sem carteiras)</option>';};
   const head=()=>{const k=kind(),h=el.querySelector(".lhd");h.className="lhd "+k;
-    h.innerHTML='<span class="mu">Data</span><span class="mu">Descrição</span><span class="mu">Categoria</span><span class="mu">Valor</span>'+(card?'<span class="mu">Parcelas</span>':"")+(k==="cdh"?'<span class="mu">Portador</span>':"");};
+    h.innerHTML=vale?'<span class="mu">Data</span><span class="mu">Descrição</span><span class="mu">Categoria</span><span class="mu">Carteira</span><span class="mu">Valor</span>':'<span class="mu">Data</span><span class="mu">Descrição</span><span class="mu">Categoria</span><span class="mu">Valor</span>'+(card?'<span class="mu">Parcelas</span>':"")+(k==="cdh"?'<span class="mu">Portador</span>':"");};
   const addRow=d=>{const k=kind(),H=holdersOf(x.acc),r=document.createElement("div");r.className="lr "+k;
     let sv=null;try{sv=localStorage.getItem("hold_"+x.acc)}catch(e){}
     r.innerHTML=`<input type="date" class="ld" value="${d||""}"><input class="lv" inputmode="decimal" placeholder="Valor"><input class="lds" placeholder="Descrição" list="lqs" autocomplete="off"><select class="lc">${loteCats()}</select>`
-      +(card?'<input class="lp" type="number" min="1" max="48" inputmode="numeric" placeholder="Parc.">':"")
+      +(vale?`<select class="lw">${wopts()}</select>`:"")+(card?'<input class="lp" type="number" min="1" max="48" inputmode="numeric" placeholder="Parc.">':"")
       +(k==="cdh"?`<select class="lh">${H.map(h=>`<option value="${h.id}" ${h.id===sv?"selected":""}>${esc(h.name)}</option>`).join("")}</select>`:"")
       +'<div class="mu lm"></div>';
     el.querySelector(".lrows").appendChild(r);
@@ -154,21 +169,27 @@ function loteSec(i){
   const info=r=>{const m=r.querySelector(".lm");if(r.classList.contains("err"))return;m.textContent="";if(!card||!filled(r))return;
     const cc=S.cards.find(c=>c.account_id===x.acc),d=r.querySelector(".ld").value,n=parseInt(r.querySelector(".lp").value)||1,v=num(r.querySelector(".lv").value||"");
     const t=[];if(cc&&loteOk(d))t.push("fatura "+mlab(stm(cc,d)));if(n>=2&&v>0)t.push(`${n}x de aprox. ${fmt(v/n,"BRL")}`);m.textContent=t.join(" · ");};
-  const tot=()=>{const cur=(S.accounts.find(a=>a.id===x.acc)||{currency:"BRL"}).currency.trim();let e=0,inc=0,n=0;const F={};
+  const tot=()=>{const cur=(S.accounts.find(a=>a.id===x.acc)||{currency:"BRL"}).currency.trim();let e=0,inc=0,n=0;const F={},W={};
     const cc=card&&S.cards.find(c=>c.account_id===x.acc);
     rows().filter(filled).forEach(r=>{const v=num(r.querySelector(".lv").value||""),c=catById(r.querySelector(".lc").value);if(!(v>0))return;n++;
       if(c&&c.kind==="income")inc+=v;else e+=v;
+      if(vale){const w=r.querySelector(".lw").value;if(w)W[w]=(W[w]||0)+(c&&c.kind==="income"?v:-v);}
       if(cc){const d=r.querySelector(".ld").value,np=parseInt(r.querySelector(".lp").value)||1;if(loteOk(d)){const sg=c&&c.kind==="income"?-1:1;
         if(np>=2){const vv=Math.round(v/np*100)/100;for(let k=0;k<np;k++){const m=stm(cc,dAdd(d,k)),pv=k<np-1?vv:Math.round((v-vv*(np-1))*100)/100;F[m]=(F[m]||0)+sg*pv;}}
         else{const m=stm(cc,d);F[m]=(F[m]||0)+sg*v;}}}});
+    /* vale: total por carteira e aviso se a compra passar do saldo (só avisa; pode gravar) */
+    let vs="";if(vale){const ks=Object.keys(W),sd=k=>(S.wbal||{})[k]||0;
+      vs=(ks.length?" · por carteira: "+ks.map(k=>`${wn(k)} ${fmt(W[k],cur)}`).join(" · "):"")+ks.filter(k=>W[k]<0&&-W[k]>sd(k)+0.004).map(k=>` · ⚠️ ${wn(k)}: saldo ${fmt(sd(k),cur)}, faltam ${fmt(-W[k]-sd(k),cur)}`).join("");}
     el.querySelector(".lst").textContent=n?`${n} linha(s) · ${card?"compras":"despesas"} ${fmt(e,cur)}${inc?" · "+(card?"estornos":"receitas")+" "+fmt(inc,cur):""}`
-      +(Object.keys(F).length?" · por fatura: "+Object.keys(F).sort().map(m=>mlab(m).replace(" de "," ")+" "+fmt(F[m],cur)).join(" · "):""):"";};
+      +(Object.keys(F).length?" · por fatura: "+Object.keys(F).sort().map(m=>mlab(m).replace(" de "," ")+" "+fmt(F[m],cur)).join(" · "):"")+vs:"";};
   el.querySelector(".lsa").onchange=()=>{x.acc=el.querySelector(".lsa").value;head();
     /* troca de conta: refaz as linhas (o portador depende do cartão), mantendo o que foi digitado */
     const keep=rows().map(r=>({d:r.querySelector(".ld").value,v:r.querySelector(".lv").value,s:r.querySelector(".lds").value,c:r.querySelector(".lc").value,p:r.querySelector(".lp")?r.querySelector(".lp").value:""}));
     el.querySelector(".lrows").innerHTML="";keep.forEach(k=>{addRow(k.d);const r=rows().pop();r.querySelector(".lv").value=k.v;r.querySelector(".lds").value=k.s;r.querySelector(".lc").value=k.c;if(r.querySelector(".lp"))r.querySelector(".lp").value=k.p;info(r);});
     if(!keep.length||filled(rows().pop()))addRow("");tot();};
   el.querySelector(".lad").onclick=()=>{const R=rows();addRow(R.length?R[R.length-1].querySelector(".ld").value:"");};
+  if(vale){const wref=()=>{if(!el.isConnected)return;rows().forEach(r=>{const w=r.querySelector(".lw");if(w){const v=w.value;w.innerHTML=wopts();if(v&&[...w.options].some(o=>o.value===v))w.value=v;}});tot();};
+    loadWallets().then(wref);}
   el.querySelector("[data-lx]").onclick=()=>{if(rows().some(filled)&&!confirm("Tirar esta seção? As linhas digitadas nela serão descartadas."))return;x.gone=true;el.remove();};
   head();for(let k=0;k<3;k++)addRow("");
 }
@@ -181,15 +202,16 @@ async function loteSave(){
     const g=c=>r.querySelector(c),v=num(g(".fv").value||""),d=g(".fd").value,acc=S.accounts.find(a=>a.id===g(".fa").value),cid=g(".fc").value,c=catById(cid),np=g(".fp").value.trim()?parseInt(g(".fp").value):1,q=S.qs.find(z=>z.id===r.dataset.q);
     const e=[];if(!loteOk(d))e.push("data");if(!(v>0)||Math.round(v*100)/100!==v)e.push("valor");if(!acc)e.push("conta");if(!c&&S.cats.length)e.push("categoria");
     if(!(np>=1&&np<=48))e.push("parcelas de 1 a 48");if(np>=2&&c&&c.kind==="income")e.push("parcelas só em despesa");if(np>=2&&acc&&acc.currency.trim()!=="BRL")e.push("parcelas só em conta em reais");
+    const ben=!!acc&&acc.type==="benefit",wid=ben?(g(".fw").value||null):null;if(ben&&!wid)e.push("carteira");if(ben&&np>=2)e.push("parcelas não valem na conta vale");
     if(e.length){r.classList.add("err");g(".fm").textContent="Corrija: "+e.join(", ")+".";bad.push(r);return;}
     const H=holdersOf(acc.id);let hv=null;if(acc.type==="credit_card"){let sv=null;try{sv=localStorage.getItem("hold_"+acc.id)}catch(x){}hv=H.length>1?(H.some(h=>h.id===sv)?sv:H[0].id):(H[0]?H[0].id:null);}
-    const base={lbl:"Conta fixa "+(q?q.name:""),account_id:acc.id,category_id:cid||null,description:q?q.name:null,card_holder_id:hv},sg=c&&c.kind==="income"?1:-1;nL++;
+    const base={lbl:"Conta fixa "+(q?q.name:""),account_id:acc.id,category_id:cid||null,description:q?q.name:null,card_holder_id:hv,wallet_id:wid},sg=c&&c.kind==="income"?1:-1;nL++;if(wid)lsSet("wal_"+acc.id,wid);
     if(np>=2){const gid=uid4(),vv=Math.round(v/np*100)/100;
       for(let k=1;k<=np;k++){const dk=dAdd(d,k-1),pv=k<np?vv:Math.round((v-vv*(np-1))*100)/100;
         out.push({...base,date:dk,amount:-pv,status:dk>today()?"planned":"posted",installment_group_id:gid,installment_number:k,installment_total:np});}}
     else out.push({...base,date:d,amount:sg*v,status:d>today()?"planned":"posted"});});
   document.querySelectorAll("#lsecs [data-sec]").forEach(el=>{const x=S.loteSecs[+el.dataset.sec];if(!x||x.gone||x.t==="iv")return;
-    const acc=S.accounts.find(a=>a.id===x.acc),card=x.t==="cd",H=holdersOf(x.acc);
+    const acc=S.accounts.find(a=>a.id===x.acc),card=x.t==="cd",vale=x.t==="vl",H=holdersOf(x.acc);
     el.querySelectorAll(".lr").forEach((r,j)=>{r.classList.remove("err");
       const g=c=>r.querySelector(c),v=num(g(".lv").value||""),d=g(".ld").value,desc=g(".lds").value.trim()||null,cid=g(".lc").value,c=catById(cid),np=g(".lp")?(g(".lp").value.trim()?parseInt(g(".lp").value):1):1;
       if(!(g(".lv").value.trim()||desc||cid))return;
@@ -197,13 +219,14 @@ async function loteSave(){
       if(!loteOk(d))e.push("data");
       if(!(v>0)||Math.round(v*100)/100!==v)e.push("valor (maior que zero, até 2 casas)");
       if(!c&&S.cats.length)e.push("categoria");
+      if(vale&&!g(".lw").value)e.push("carteira");
       if(!(np>=1&&np<=48))e.push("parcelas de 1 a 48");
       if(np>=2&&c&&c.kind==="income")e.push("parcelas só em despesa");
       if(np>=2&&acc.currency.trim()!=="BRL")e.push("parcelas só em conta em reais");
       if(e.length){r.classList.add("err");g(".lm").textContent="Corrija: "+e.join(", ")+".";bad.push(r);return;}
       const sg=c&&c.kind==="income"?1:-1,hv=H.length>1?(g(".lh")?g(".lh").value:null):(H[0]?H[0].id:null);
-      const base={lbl:`${acc.name}, linha ${j+1}`,account_id:x.acc,category_id:cid||null,description:desc,card_holder_id:card?hv:null};
-      nL++;
+      const base={lbl:`${acc.name}, linha ${j+1}`,account_id:x.acc,category_id:cid||null,description:desc,card_holder_id:card?hv:null,wallet_id:vale?g(".lw").value:null};
+      nL++;if(vale)lsSet("wal_"+x.acc,g(".lw").value);
       if(np>=2){const gid=uid4(),vv=Math.round(v/np*100)/100;
         for(let k=1;k<=np;k++){const dk=dAdd(d,k-1),pv=k<np?vv:Math.round((v-vv*(np-1))*100)/100;
           out.push({...base,date:dk,amount:-pv,status:dk>today()?"planned":"posted",installment_group_id:gid,installment_number:k,installment_total:np});}}

@@ -85,6 +85,7 @@ async function walMonth(fb,m0){
   return {rows,T,pm,oldCl:!!cq.data&&!wcl.length};
 }
 async function viewList(){
+  if(S.bsBack){S.bsBack=false;return viewBusca();}/* voltando do ✏️ aberto na Busca: reabre a busca uma única vez (busca.js) */
   if(S.fAcc&&!S.accounts.some(a=>a.id===S.fAcc))S.fAcc=null;
   if(S.fTrip&&!tripById(S.fTrip))S.fTrip=null;
   const ftr=S.fTrip?tripById(S.fTrip):null;
@@ -297,6 +298,7 @@ async function viewList(){
       return `<div class="row" style="margin-top:10px;border-bottom:2px solid var(--ac)"><div>${n}${sub?`<div class="mu">${sub}</div>`:""}</div>${val}</div>`;};
     return ord.map(id=>{const L=G[id]||[];return head(id,L)+(L.length?L.map(rowH).join(""):'<div class="mu" style="padding:6px 0">Sem lançamentos neste mês.</div>');}).join("");};
   $("main").innerHTML=`<div class="card"><div class="seg"><button id="lpm" class="${mon?"on":""}">Mês</button><button id="lpa" class="${mon?"":"on"}">Tudo</button></div>
+    <button class="lk" id="lbs">🔎 Buscar lançamentos: descrição, categoria, valor, data e duplicados</button>
     <button class="lk" id="lrel">📄 Relatório do mês${mon?" ("+esc(mlab(m0))+")":""}: resumo, contas, lançamentos e categorias · PDF e Excel</button>
     ${mon?`<div class="row" style="align-items:center"><button class="x" id="lpp">‹</button><b>${fc?"Fatura de ":""}${mlab(m0)}</b><button class="x" id="lpn">›</button></div>`:""}
     <label style="margin-top:0">Conta<select id="lfa"><option value="">Todas as contas</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.fAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
@@ -306,6 +308,7 @@ async function viewList(){
     ${bal?`<div class="row" style="margin-top:10px"><span>Saldo atual</span><b class="${bal.balance<0?"neg":"pos"}">${fmt(bal.balance,bal.currency)}</b></div>`:""}${sumHtml}</div>
   <div class="card">${LIST.length?listHtml():`<span class="mu">${ftr?"Nenhum lançamento desta viagem com esses filtros.":S.fAcc?"Nenhum lançamento nesta conta.":"Nenhum lançamento ainda."}</span>`}</div>
   ${data.length>=(grp&&mon?Math.max(S.lim,500):S.lim)||ivMore?'<button class="sec" id="lm">Carregar mais</button>':""}`;
+  $("lbs").onclick=()=>viewBusca();
   $("lrel").onclick=()=>{S.rmon=mon?m0:today().slice(0,8)+"01";go("rel");};
   if($("gti"))$("gti").onclick=()=>{S.im="";go("inv");};
   document.querySelectorAll("[data-gi]").forEach(b=>b.onclick=()=>{S.im="";go("inv");});
