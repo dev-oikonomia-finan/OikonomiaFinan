@@ -118,14 +118,16 @@ async function viewList(){
   const bal=bl.data;
   const ent=(sm.data||[]).reduce((r,x)=>{const v=Number(x.amount)*fxm(x);if(x.transfer_group_id){r[2]+=v;return r;}return v>0?[r[0]+v,r[1],r[2]]:[r[0],r[1]+v,r[2]];},[0,0,0]);
   const tr={cards:{},inn:0,out:0};let prev=0,prevOk=false,prevCalc=false;
-  let finB=null;
+  let finB=null,cfM=null;
   if(mon&&S.fAcc&&!fc&&!ftr){
     const acF=S.accounts.find(a=>a.id===S.fAcc);
     if(nat&&acF&&(acF.type==="checking"||acF.type==="cash")){const {data:fb2}=await sb.rpc("account_balance_before",{p_account:S.fAcc,p_date:mAdd(m0,1)});
       if(fb2&&fb2[0])finB=Number(fb2[0].balance_base);}
     const {data:pc}=await sb.from("balance_closings").select("reported_balance").eq("account_id",S.fAcc).eq("ref_month",mAdd(m0,-1)).maybeSingle();
     if(pc){prev=Number(pc.reported_balance)||0;prevOk=true;}
-    else{const ac0=S.accounts.find(a=>a.id===S.fAcc);
+    {const {data:c0}=await sb.from("balance_closings").select("reported_balance").eq("account_id",S.fAcc).eq("ref_month",m0).maybeSingle();
+      if(c0&&c0.reported_balance!=null)cfM=Number(c0.reported_balance);}
+    if(!pc){const ac0=S.accounts.find(a=>a.id===S.fAcc);
       if(ac0&&(ac0.type==="checking"||ac0.type==="cash")){const {data:pb}=await sb.rpc("account_balance_before",{p_account:S.fAcc,p_date:m0});
         if(pb&&pb[0]){prev=Number(pb[0].balance)||0;prevCalc=true;}}}
     const ids=[...new Set((sm.data||[]).filter(x=>x.transfer_group_id).map(x=>x.transfer_group_id))],oth={};
@@ -153,6 +155,7 @@ async function viewList(){
       if(e0)QD.err=e0.error.message;
       else{
         const cl={};(cq.data||[]).forEach(x=>{cl[x.account_id]=Number(x.reported_balance)||0;});
+        const cf0={};{const {data:c0}=await sb.from("balance_closings").select("account_id,reported_balance").in("account_id",cid).eq("ref_month",m0);(c0||[]).forEach(x=>{if(x.reported_balance!=null)cf0[x.account_id]=Number(x.reported_balance);});}
         const od={};cs.forEach(a=>{od[a.id]=a.opening_date||null;});
         const rows=(tq.data||[]).filter(x=>!od[x.account_id]||x.date>od[x.account_id]);
         const mv={};rows.forEach(x=>{mv[x.account_id]=true;});
@@ -160,7 +163,7 @@ async function viewList(){
           const bb=(bq[i].data||[])[0],isB=a.currency.trim()==="BRL";
           const pv=(isB&&cl[a.id]!=null)?cl[a.id]:(bb?Number(bb.balance_base)||0:0);
           if(isB)QD.prev+=pv;else{const F=qf(a.currency.trim());F.prev+=cl[a.id]!=null?cl[a.id]:(bb?Number(bb.balance)||0:0);F.pB+=bb?Number(bb.balance_base)||0:0;}
-          ACCF[a.id]={prev:cl[a.id]!=null?cl[a.id]:(bb?Number(bb.balance)||0:0),mov:0,cur:a.currency.trim()};
+          ACCF[a.id]={prev:cl[a.id]!=null?cl[a.id]:(bb?Number(bb.balance)||0:0),mov:0,cur:a.currency.trim(),cf:cf0[a.id]!=null?cf0[a.id]:null};
           if(!a.opening_date&&cl[a.id]==null&&(Math.abs(pv)>=0.005||mv[a.id]))QD.sem.push(a.name);});
         const ids=[...new Set(rows.filter(x=>x.transfer_group_id).map(x=>x.transfer_group_id))],og={};
         for(let i=0;i<ids.length;i+=100){
@@ -300,7 +303,7 @@ async function viewList(){
     ${Object.keys(tr.cards).map(id=>`<div class="row" style="padding-left:14px"><span class="mu">${esc(S.accounts.find(a=>a.id===id).name)}</span><span class="${sc(tr.cards[id])}">${mm(tr.cards[id])}</span></div>`).join("")}
     <div class="row"><span class="mu">Transferências de entrada</span><span class="pos">${mm(tr.inn)}</span></div>
     <div class="row"><span class="mu">Transferências de saída</span><span class="neg">${mm(tr.out)}</span></div>
-    <div class="row"><b>Saldo final</b><b class="${sc(tot+prev)}">${mm(tot+prev)}</b></div>${finB!=null&&!isNaN(finB)?`<div class="mu" style="text-align:right">≈ ${fmt(finB,"BRL")} em reais, pelo custo médio</div>`:""}<div class="mu">Saldo do mês anterior + receitas + despesas + cartões + transferências.</div>`;
+    <div class="row"><b>Saldo final</b><b class="${sc(tot+prev)}">${mm(tot+prev)}</b></div>${cfM!=null?`<div class="row"><span class="mu">Fechamento informado</span><b class="${sc(cfM)}">${mm(cfM)}</b></div><div class="row"><span class="mu">Diferença para o fechamento</span><b class="${Math.abs(cfM-(tot+prev))<0.005?"pos":"neg"}">${Math.abs(cfM-(tot+prev))<0.005?"✓ confere":mm(cfM-(tot+prev))}</b></div>${Math.abs(cfM-(tot+prev))>=0.005?`<div class="mu" style="color:var(--yel)">O saldo calculado não bate com o fechamento informado. Se este é o primeiro mês da conta, a diferença é o saldo que já existia antes dos lançamentos; senão, veja se falta algum lançamento.</div>`:""}`:""}${finB!=null&&!isNaN(finB)?`<div class="mu" style="text-align:right">≈ ${fmt(finB,"BRL")} em reais, pelo custo médio</div>`:""}<div class="mu">Saldo do mês anterior + receitas + despesas + cartões + transferências.</div>`;
   else if(mon)sumHtml=`<b style="display:block;margin-top:10px">Resultado do mês</b><div class="row"><span class="mu">Receitas do mês</span><span class="pos">${mm(ent[0])}</span></div><div class="row"><span class="mu">Despesas do mês</span><span class="neg">${mm(ent[1])}</span></div><div class="row"><b>Resultado</b><b class="${sc(ent[0]+ent[1])}">${mm(ent[0]+ent[1])}</b></div><div class="mu">Receitas, despesas e resultado não incluem transferências.</div><div class="seg" style="margin-top:8px"><button id="cmf" class="${cm()==="stm"?"on":""}">Cartão: pela fatura</button><button id="cmb" class="${cm()==="buy"?"on":""}">Cartão: pela compra</button></div><div class="mu">${cm()==="stm"?"Compras no cartão contam no mês da fatura (vencimento), como no extrato. Transferências sempre pela data.":"Compras no cartão contam na data da compra."}</div>${qdHtml}`;
   const rowH=t=>`<div class="row"><div>
     <div>${esc(t.description||t.categories?.name||"Sem descrição")}${t.installment_total?` <span class="mu">${t.installment_number}/${t.installment_total}</span>`:""}</div>
@@ -321,7 +324,7 @@ async function viewList(){
     const head=(id,L)=>{const a=S.accounts.find(x=>x.id===id)||{},nm=a.name||(L[0]&&L[0].accounts&&L[0].accounts.name)||"Conta",tot=L.reduce((r,x)=>r+Number(x.amount)*Number(x.fx_rate_to_base||1),0);
       const n=`<b>${esc(nm)}</b> <span class="mu">· ${L.length} lanç.</span>`;let sub="",val="";
       if(all0&&ACCF[id]){const A=ACCF[id],f=A.prev+A.mov;
-        sub=`${proj?"Saldo final projetado":"Saldo final"} de ${mesN} · anterior ${fmt(A.prev,A.cur)} · movimento ${fmt(A.mov,A.cur)}`;val=`<b class="${sc(f)}">${fmt(f,A.cur)}</b>`;}
+        sub=`${proj?"Saldo final projetado":"Saldo final"} de ${mesN} · anterior ${fmt(A.prev,A.cur)} · movimento ${fmt(A.mov,A.cur)}${A.cf!=null?" · fechamento informado "+fmt(A.cf,A.cur)+(Math.abs(A.cf-f)<0.005?" ✓":""):""}`;val=`<b class="${sc(f)}">${fmt(f,A.cur)}</b>`;}
       else if(all0&&WALF[id]){const W=WALF[id],cu=a.currency.trim();
         sub=`${proj?"Saldo final projetado":"Saldo final"} de ${mesN} (todas as carteiras)`+W.rows.map(r=>`<div>${esc(r.w.name)}${r.w.is_active?"":" (inativa)"}: <b class="${sc(r.f)}">${fmt(r.f,cu)}</b> <span>(anterior ${fmt(r.p,cu)}${r.hasC?"":", calculado"} · créditos ${fmt(r.i,cu)} · gastos ${fmt(r.e,cu)})</span></div>`).join("");
         val=`<b class="${sc(W.T.f)}">${fmt(W.T.f,cu)}</b>`;}
