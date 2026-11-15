@@ -227,6 +227,7 @@ async function viewList(){
   let sumHtml="";
   const fi=S.fAcc&&S.accounts.find(a=>a.id===S.fAcc&&a.type==="investment");
   const iv={inc:0,ops:0};
+  let IA=null;/* valor dos ativos da conta de investimento no começo e no fim do mês (pelas posições lançadas) */
   /* conta de investimento filtrada: operações e rendimentos (lançados em Investimentos) entram na lista, só para conferir */
   let IVX=[],ivMore=false;
   if(fi&&!ftr){
@@ -242,6 +243,22 @@ async function viewList(){
         d:[o.quantity?nq(o.quantity)+" un.":"",fe?"taxas "+mm(fe):"",Number(o.tax_withheld)?"IR retido "+mm(o.tax_withheld):""].filter(Boolean).join(" · ")});});
     (ri.data||[]).forEach(i=>IVX.push({_k:"inc",id:i.id,date:i.date,created_at:i.created_at,v:Number(i.net),
       t:"Rendimento · "+(IK[i.kind]||i.kind)+" · "+an(i),d:Number(i.tax_withheld)?"IR retido "+mm(i.tax_withheld):""}));
+    if(mon){try{
+      const ea=mAdd(m0,1),r2x=v=>Math.round(v*100)/100;
+      const pgq=async mk=>{const o=[];for(let i=0;;i+=1000){const r=await mk().range(i,i+999);if(r.error)throw r.error;o.push(...r.data);if(r.data.length<1000)break;}return o;};
+      const as=await pgq(()=>sb.from("investment_assets").select("id,price_mode").eq("account_id",S.fAcc).order("id"));
+      const ids=as.map(a=>a.id);let ob=[],sn=[];
+      if(ids.length)[ob,sn]=await Promise.all([
+        pgq(()=>sb.from("investment_operations").select("id,asset_id,date,qty_after,cost_after,created_at").in("asset_id",ids).lt("date",ea).order("date").order("created_at").order("id")),
+        pgq(()=>sb.from("investment_snapshots").select("asset_id,date,value").in("asset_id",ids).lt("date",ea).order("date").order("asset_id"))]);
+      /* valor da posição de cada ativo antes de lim: última operação dá quantidade e custo; último valor informado dá o valor (sem valor informado, usa o custo) */
+      const val=lim=>r2x(as.reduce((r,a)=>{let po=null,s=null;
+        ob.forEach(o=>{if(o.asset_id===a.id&&o.date<lim)po=o;});sn.forEach(x=>{if(x.asset_id===a.id&&x.date<lim)s=x;});
+        if(!po)return r;const q=Number(po.qty_after||0),c=Number(po.cost_after||0);if(!(q>0||c>0))return r;
+        return r+(s?(a.price_mode==="quote"?q*Number(s.value):Number(s.value)):c);},0));
+      const {data:cl}=await sb.from("balance_closings").select("reported_balance").eq("account_id",S.fAcc).eq("ref_month",m0).maybeSingle();
+      IA={ini:val(m0),fim:val(ea),cf:cl?Number(cl.reported_balance):null};
+    }catch(e){IA=null;}}
     if(mon){iv.inc=IVX.filter(x=>x._k==="inc").reduce((r,x)=>r+x.v,0);iv.ops=IVX.filter(x=>x._k==="op").reduce((r,x)=>r+x.v,0);}
     else ivMore=(ri.data||[]).length>=S.lim||(ro.data||[]).length>=S.lim;}
   if(ftr){
@@ -253,6 +270,21 @@ async function viewList(){
      <div class="mu">Em R$ (moeda estrangeira pelo custo médio). ${mon||S.fAcc?"Só o que passa nos filtros de período e conta; o custo total da viagem está na tela da viagem.":"Inclui parcelas futuras (previstas)."}</div>
      <button class="sec" id="gtp">✈️ Abrir a viagem</button>`;}
   else if(fb)sumHtml=wqHtml;
+  else if(fi&&mon&&IA){const va=iv.ops+(IA.fim-IA.ini),mv=tot+iv.inc+va,
+      /* primeiro mês da conta (sem fechamento anterior, sem ativos antes) com fechamento informado: o saldo inicial é deduzido do fechamento */
+      abre=!prevOk&&IA.ini===0&&IA.cf!=null,pv=prevOk?prev:abre?Math.round((IA.cf-mv)*100)/100:IA.ini,fin=pv+mv,cx=fin-IA.fim,df=IA.cf==null?null:IA.cf-fin;
+    sumHtml=`<div class="row"><span class="mu">${abre?"Saldo inicial (já existia antes dos lançamentos; deduzido do fechamento)":"Saldo do mês anterior"+(prevOk?"":" (sem fechamento; só os ativos)")}</span><span class="${sc(pv)}">${mm(pv)}</span></div>
+    <div class="row"><span class="mu">Aportes (transferências de entrada)</span><span class="pos">${mm(tr.inn)}</span></div>
+    <div class="row"><span class="mu">Resgates (transferências de saída)</span><span class="neg">${mm(tr.out)}</span></div>
+    <div class="row"><span class="mu">Rendimentos recebidos (dividendos, juros…)</span><span class="pos">${mm(iv.inc)}</span></div>
+    <div class="row"><span class="mu">Valorização dos ativos no mês</span><span class="${sc(va)}">${mm(va)}</span></div>
+    <div class="row"><b>Saldo final</b><b class="${sc(fin)}">${mm(fin)}</b></div>
+    <div class="row"><span class="mu">&nbsp;&nbsp;↳ em ativos (posição no fim do mês)</span><span>${mm(IA.fim)}</span></div>
+    <div class="row"><span class="mu">&nbsp;&nbsp;↳ em caixa (sem aplicar)</span><span class="${sc(cx)}">${mm(cx)}</span></div>
+    ${IA.cf!=null?`<div class="row"><span class="mu">Fechamento informado</span><span>${mm(IA.cf)}</span></div>
+    <div class="row"><span class="mu">Diferença para o fechamento</span><b class="${Math.abs(df)<0.005?"pos":"neg"}">${Math.abs(df)<0.005?"✓ confere":mm(df)}</b></div>${Math.abs(df)>=0.005?`<div class="mu" style="color:var(--yel)">O saldo calculado não bate com o fechamento. Veja se falta um aporte ou resgate, o valor da posição do mês (Atualizar cotações) ou um rendimento. No primeiro mês, a diferença é o dinheiro que já estava na conta antes do sistema.</div>`:""}`:`<div class="mu">Sem fechamento deste mês para conferir.</div>`}
+    <div class="row"><span class="mu">Compras e vendas de ativos (só movem entre caixa e ativos; não mudam o saldo)</span><span class="${sc(iv.ops)}">${mm(iv.ops)}</span></div>
+    <div class="mu">Saldo final = anterior + aportes − resgates + rendimentos + valorização. Valorização = variação do valor dos ativos no mês (posição do fim menos a do começo) já descontadas as compras e vendas. O valor de cada ativo vem do último valor informado até o fim do mês (ou do custo, se não houver). Operações e rendimentos aparecem na lista abaixo; são lançados e apagados em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;}
   else if(fi&&mon)sumHtml=`<div class="row"><span class="mu">Saldo do mês anterior${prevOk?"":" (sem fechamento)"}</span><span class="${sc(prev)}">${mm(prev)}</span></div>
     <div class="row"><span class="mu">Rendimentos do mês</span><span class="pos">${mm(iv.inc)}</span></div>
     <div class="row"><span class="mu">Compras e vendas de ativos</span><span class="${sc(iv.ops)}">${mm(iv.ops)}</span></div>
@@ -300,7 +332,7 @@ async function viewList(){
   $("main").innerHTML=`<div class="card"><div class="seg"><button id="lpm" class="${mon?"on":""}">Mês</button><button id="lpa" class="${mon?"":"on"}">Tudo</button></div>
     <button class="lk" id="lbs">🔎 Buscar lançamentos: descrição, categoria, valor, data e duplicados</button>
     <button class="lk" id="lrel">📄 Relatório do mês${mon?" ("+esc(mlab(m0))+")":""}: resumo, contas, lançamentos e categorias · PDF e Excel</button>
-    ${mon?`<div class="row" style="align-items:center"><button class="x" id="lpp">‹</button><b>${fc?"Fatura de ":""}${mlab(m0)}</b><button class="x" id="lpn">›</button></div>`:""}
+    ${mon?`<div class="row" style="align-items:center"><button class="x" id="lpp">‹</button><div style="flex:1;text-align:center"><b>${fc?"Fatura de ":""}${mlab(m0)}</b><div><input type="month" id="lpmj" value="${m0.slice(0,7)}" min="2000-01" max="2100-12" title="Ir direto para um mês" style="width:auto;margin:4px auto 0;padding:4px 8px;font-size:13px"></div></div><button class="x" id="lpn">›</button></div>`:""}
     <label style="margin-top:0">Conta<select id="lfa"><option value="">Todas as contas</option>${S.accounts.map(a=>`<option value="${a.id}" ${a.id===S.fAcc?"selected":""}>${esc(a.name)} (${a.currency.trim()})</option>`).join("")}</select></label>
     ${wchips}
     ${tripsOf().length?`<label>Viagem ou passeio<select id="lft"><option value="">Todas (sem filtro de viagem)</option>${tripsOf().map(t=>`<option value="${t.id}" ${ftr&&t.id===ftr.id?"selected":""}>${TRIP_ICON[t.kind]} ${esc(t.name)} · ${tripPeriod(t)}</option>`).join("")}</select></label>`:""}
@@ -320,7 +352,7 @@ async function viewList(){
   if($("lgd")){$("lgd").onclick=()=>{lsSet("listgrp","date");S.lim=50;viewList();};$("lga").onclick=()=>{lsSet("listgrp","acc");S.lim=50;viewList();};}
   if($("cmf")){$("cmf").onclick=()=>{lsSet("cardmode","stm");S.lim=50;viewList();};$("cmb").onclick=()=>{lsSet("cardmode","buy");S.lim=50;viewList();};}
   $("lpm").onclick=()=>{S.lper="mon";S.lim=50;viewList();};$("lpa").onclick=()=>{S.lper="all";S.lim=50;viewList();};
-  if($("lpp")){$("lpp").onclick=()=>{S.lmon=mAdd(m0,-1);S.lim=50;viewList();};$("lpn").onclick=()=>{S.lmon=mAdd(m0,1);S.lim=50;viewList();};}
+  if($("lpp")){$("lpp").onclick=()=>{S.lmon=mAdd(m0,-1);S.lim=50;viewList();};$("lpn").onclick=()=>{S.lmon=mAdd(m0,1);S.lim=50;viewList();};if($("lpmj"))$("lpmj").onchange=()=>{const v=$("lpmj").value;if(/^\d{4}-\d{2}$/.test(v)){S.lmon=v+"-01";S.lim=50;viewList();}};}
   document.querySelectorAll("[data-ed]").forEach(b=>b.onclick=()=>{S.ed=b.dataset.ed;go("ed");});
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
     const t=data.find(x=>x.id===b.dataset.del);
