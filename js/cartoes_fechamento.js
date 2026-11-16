@@ -73,7 +73,7 @@ async function viewClo(msg){
     return L.map(r=>`<div class="row" style="border:0;padding:4px 0 4px 12px"><div>${esc(walletName(r.wallet_id)||"Carteira")}<div class="mu">app ${fmt(r.calculated_balance,cur)} · extrato ${fmt(r.reported_balance,cur)}</div></div><span class="mu">${dif(Number(r.reported_balance)-Number(r.calculated_balance))}</span></div>`).join("");};
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Fechamento mensal</b>
    <label>${card?"Cartão":"Conta"}<select id="ca">${S.accounts.map(a=>`<option value="${a.id}" ${a.id===acc.id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
-   <div class="row" style="align-items:center"><button class="x" id="cp">‹</button><b>${mlab(m)}</b><button class="x" id="cn">›</button></div>
+   <div class="row" style="align-items:center"><button class="x" id="cp">‹</button><div style="flex:1;text-align:center"><b>${mlab(m)}</b><div><input type="month" id="cmj" value="${m.slice(0,7)}" min="2000-01" max="2100-12" title="Ir direto para um mês" style="width:auto;margin:4px auto 0;padding:4px 8px;font-size:13px"></div></div><button class="x" id="cn">›</button></div>
    ${done?`<p class="pos">Fechado ✓</p><div class="row"><span>${card?"Total da fatura":"Saldo"} (app)</span><span>${fmt(done.calculated_balance,cur)}</span></div><div class="row"><span>Informado (extrato)</span><span>${fmt(done.reported_balance,cur)}</span></div><div class="mu">${dif(done.reported_balance-done.calculated_balance)}</div>${wcHtml(done)}`
    :`<div class="row"><span>${card?"Total da fatura no app":"Saldo no app, no fim do mês"}</span><b>${fmt(cv,cur)}</b></div>
    ${wl.length?wl.map(w=>`<label>${esc(w.name)} <span class="mu">(app ${fmt(w.balance,cur)})</span><input class="cw" data-w="${w.wallet_id}" data-a="${w.balance}" inputmode="decimal" placeholder="0,00"><span class="mu" id="cwd${w.wallet_id}"></span></label>`).join("")+`<label>Total no extrato (soma das carteiras)<input id="cv" readonly></label>`:`<label>${card?"Total da fatura no banco":"Saldo no extrato do banco"}<input id="cv" inputmode="decimal" placeholder="0,00"></label>`}
@@ -85,6 +85,7 @@ async function viewClo(msg){
   $("bk").onclick=()=>go("acc");
   $("ca").onchange=()=>{S.cloAcc=$("ca").value;S.cloMon=null;viewClo();};
   $("cp").onclick=()=>{S.cloMon=mAdd(m,-1);viewClo();};$("cn").onclick=()=>{S.cloMon=mAdd(m,1);viewClo();};
+  $("cmj").onchange=()=>{const v=$("cmj").value;if(/^\d{4}-\d{2}$/.test(v)){S.cloMon=v+"-01";viewClo();}};
   if($("cv"))$("cv").oninput=()=>{const v=num($("cv").value);$("ccmp").textContent=isNaN(v)?"":"Comparação: "+dif(v-cv);};
   document.querySelectorAll(".cw").forEach(i=>i.oninput=()=>{
     const all=[...document.querySelectorAll(".cw")];
