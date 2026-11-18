@@ -202,15 +202,16 @@ async function viewInv(){
     riQ=()=>{let q=sb.from("investment_income").select("id,date,kind,tax_withheld,net,investment_assets(name,ticker)").eq("household_id",hid);
       if(RF.a)q=q.eq("asset_id",RF.a);if(RF.d1)q=q.gte("date",RF.d1);if(RF.d2)q=q.lte("date",RF.d2);
       return q.order("date",{ascending:false}).order("created_at",{ascending:false}).limit(RF.n+1);},
-    [sm,po,ast,op,ri,ry]=await Promise.all([
+    [sm,po,ast,op,ri,ry,sn]=await Promise.all([
     sb.from("investment_account_summary").select("*").eq("household_id",hid),
     sb.from("investment_positions").select("*").eq("household_id",hid).order("name"),
     sb.from("investment_assets").select("id,account_id,class,price_mode,ticker,name,cnpj,rate,maturity,is_active").eq("household_id",hid).order("name"),
     tb==="ops"&&!m?opQ():NO,
     tb==="inc"&&!m?riQ():NO,
-    tb==="pos"&&!m?sb.from("investment_income").select("net").eq("household_id",hid).gte("date",y0):NO]);
+    tb==="pos"&&!m?sb.from("investment_income").select("net").eq("household_id",hid).gte("date",y0):NO,
+    m==="snaps"&&S.is?sb.from("investment_snapshots").select("asset_id,date,value").eq("asset_id",S.is).order("date",{ascending:false}).limit(200):NO]);
   if(S.tab!=="inv")return;
-  const er=[sm,po,ast,op,ri,ry].find(r=>r.error);
+  const er=[sm,po,ast,op,ri,ry,sn].find(r=>r.error);
   if(er){$("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button><p class="neg">${esc(er.error.message)}</p><p class="mu">Se a tabela ou a view não existe, rode o script investimentos_fase1.sql no Supabase.</p></div>`;$("bk").onclick=()=>go("acc");return;}
   const A=S.accounts.filter(a=>a.type==="investment"),ok=id=>A.some(a=>a.id===id),
     P=(po.data||[]).filter(p=>p.is_active&&ok(p.account_id)),H=P.filter(p=>Number(p.qty)>0).sort((a,b)=>clsR(a.class)-clsR(b.class)||Number(b.current_value)-Number(a.current_value)),
@@ -260,6 +261,11 @@ async function viewInv(){
     <p class="mu" id="rn"></p>
     <p class="mu">Entra no caixa da conta de investimento pelo valor líquido. Não é receita nem entra no Resultado do período.</p>
     <button class="sec" id="rsv">Salvar rendimento</button><button class="lk" id="rcx">Cancelar</button></div>`;
+  if(m==="snaps"){const sa=AL.find(x=>x.id===S.is),sq=sa&&sa.price_mode==="quote",sr=(sn.data||[]);
+    form=`<div class="card"><b>Valores lançados · ${sa?esc(sa.ticker||sa.name):""}</b>
+    <p class="mu">São os valores/cotações informados em "Atualizar cotações". Apagar um valor errado não mexe em operações nem no caixa; o app volta a usar o valor anterior (ou o custo, se não houver outro).</p>
+    ${sr.length?sr.map(x=>`<div class="row"><div><div>${fdt(x.date)}</div><div class="mu">${sq?"cotação por unidade":"valor total atualizado"}</div></div><div style="white-space:nowrap"><span>${mm(x.value)}</span><button class="x" data-sd="${esc(x.date)}" title="Apagar este valor">✕</button></div></div>`).join(""):'<p class="mu">Nenhum valor lançado para este ativo.</p>'}
+    <button class="lk" id="scx">← Voltar</button></div>`;}
   if(m==="edit"&&ea)form=`<div class="card"><b>Editar ativo</b>
     <p class="mu">${accN(ea.account_id)} · ${ICLS[ea.class]} (conta, classe e modo de valor não mudam)</p>
     <label>Ticker (código)<input id="et" value="${esc(ea.ticker||"")}" autocapitalize="characters"></label>
@@ -313,7 +319,7 @@ async function viewInv(){
       ${AL.length>6?'<label>Buscar<input id="as_q" placeholder="Ticker, nome, conta ou classe"></label>':""}
       ${AL.length?AL.map(a=>`<div class="row" data-as="${esc(((a.ticker||"")+" "+a.name+" "+accN(a.account_id)+" "+(ICLS[a.class]||"")).toLowerCase())}" style="${a.is_active?"":"opacity:.6"}"><div><div><b>${esc(a.ticker||a.name)}</b>${a.ticker?" · "+esc(a.name):""}${a.is_active?"":" (inativo)"}</div>
       <div class="mu">${accN(a.account_id)} · ${ICLS[a.class]}${a.rate?" · "+esc(a.rate):""}${a.maturity?" · venc. "+fdt(a.maturity):""}</div></div>
-      <div style="text-align:right;white-space:nowrap"><button class="x" data-ae="${a.id}" title="Editar">✏️</button><button class="x" data-ai="${a.id}">${a.is_active?"Inativar":"Reativar"}</button><button class="x" data-ax="${a.id}" title="Excluir">✕</button></div></div>`).join(""):'<p class="mu">Nenhum ativo cadastrado.</p>'}</div>`;
+      <div style="text-align:right;white-space:nowrap"><button class="x" data-ae="${a.id}" title="Editar">✏️</button><button class="x" data-sn="${a.id}" title="Valores lançados">🕘</button><button class="x" data-ai="${a.id}">${a.is_active?"Inativar":"Reativar"}</button><button class="x" data-ax="${a.id}" title="Excluir">✕</button></div></div>`).join(""):'<p class="mu">Nenhum ativo cadastrado.</p>'}</div>`;
   }
   if(tb==="rel"){
     body=`<div class="card"><button class="sec" id="nir" style="margin-top:0">Relatório de IR</button><p class="mu">Bens e Direitos, rendimentos do ano, vendas e resgates de renda fixa.</p>
@@ -348,7 +354,7 @@ async function viewInv(){
   if($("fo_more"))$("fo_more").onclick=()=>{OF.n+=50;keep();};
   if($("fr_more"))$("fr_more").onclick=()=>{RF.n+=50;keep();};
   if($("as_q"))$("as_q").oninput=()=>{const t=$("as_q").value.trim().toLowerCase();document.querySelectorAll("[data-as]").forEach(r=>{r.style.display=r.dataset.as.includes(t)?"":"none";});};
-  ["icx","ocx","qcx","rcx","iec"].forEach(i=>{if($(i))$(i).onclick=rl;});
+  ["icx","ocx","qcx","rcx","iec","scx"].forEach(i=>{if($(i))$(i).onclick=rl;});
   if($("ic"))$("ic").onchange=()=>{$("ip").value=["acoes","fiis","cripto"].includes($("ic").value)?"quote":"total";};
   if($("ic"))$("ic").onchange();
   if($("isv"))$("isv").onclick=async()=>{const n=$("in").value.trim(),t=$("it").value.trim().toUpperCase();
@@ -394,6 +400,13 @@ async function viewInv(){
     const {error}=await sb.from("investment_operations").delete().eq("id",b.dataset.od);
     if(error)alert("Erro: "+error.message);keep();});
   document.querySelectorAll("[data-ae]").forEach(b=>b.onclick=()=>{S.im="edit";S.ie=b.dataset.ae;viewInv();});
+  document.querySelectorAll("[data-sn]").forEach(b=>b.onclick=()=>{S.im="snaps";S.is=b.dataset.sn;viewInv();});
+  document.querySelectorAll("[data-sd]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("Apagar o valor lançado em "+fdt(b.dataset.sd)+"? Operações e caixa não são alterados."))return;
+    const {data,error}=await sb.from("investment_snapshots").delete().eq("asset_id",S.is).eq("date",b.dataset.sd).select();
+    if(error){alert("Erro: "+error.message);return;}
+    if(!data||!data.length){alert("Nada foi apagado. Provavelmente falta a permissão de exclusão na tabela investment_snapshots (veja a política RLS no Supabase).");return;}
+    viewInv();});
   if($("esv"))$("esv").onclick=async()=>{const n=$("en").value.trim();
     if(!n){alert("Informe o nome.");return;}
     const {error}=await sb.from("investment_assets").update({ticker:$("et").value.trim().toUpperCase()||null,name:n,cnpj:$("ecn").value.trim()||null,rate:$("er").value.trim()||null,maturity:$("ev").value||null}).eq("id",S.ie);
