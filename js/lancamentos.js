@@ -273,21 +273,24 @@ async function viewList(){
      <div class="mu">Em R$ (moeda estrangeira pelo custo médio). ${mon||S.fAcc?"Só o que passa nos filtros de período e conta; o custo total da viagem está na tela da viagem.":"Inclui parcelas futuras (previstas)."}</div>
      <button class="sec" id="gtp">✈️ Abrir a viagem</button>`;}
   else if(fb)sumHtml=wqHtml;
-  else if(fi&&mon&&IA){const va=iv.ops+(IA.fim-IA.ini),mv=tot+iv.inc+va,
-      /* primeiro mês da conta (sem fechamento anterior, sem ativos antes) com fechamento informado: o saldo inicial é deduzido do fechamento */
-      abre=!prevOk&&IA.ini===0&&IA.cf!=null,pv=prevOk?prev:abre?Math.round((IA.cf-mv)*100)/100:IA.ini,fin=pv+mv,cx=fin-IA.fim,df=IA.cf==null?null:IA.cf-fin;
-    sumHtml=`<div class="row"><span class="mu">${abre?"Saldo inicial (já existia antes dos lançamentos; deduzido do fechamento)":"Saldo do mês anterior"+(prevOk?"":" (sem fechamento; só os ativos)")}</span><span class="${sc(pv)}">${mm(pv)}</span></div>
+  else if(fi&&mon&&IA){/* Desde 19/11/2026 (decisão B): o fechamento da conta de investimento é o CAIXA. Os ativos vêm das posições (IA) e o total é caixa + ativos. */
+    const r2=v=>Math.round(v*100)/100,pv=prevOk?prev:0,va=r2(iv.ops+(IA.fim-IA.ini)),cx=r2(pv+tot+iv.inc+iv.ops),tt=r2(cx+IA.fim),t0=r2(pv+IA.ini),df=IA.cf==null?null:r2(IA.cf-cx);
+    sumHtml=`<div class="row"><span class="mu">Caixa do mês anterior${prevOk?"":" (sem fechamento)"}</span><span class="${sc(pv)}">${mm(pv)}</span></div>
     <div class="row"><span class="mu">Aportes (transferências de entrada)</span><span class="pos">${mm(tr.inn)}</span></div>
     <div class="row"><span class="mu">Resgates (transferências de saída)</span><span class="neg">${mm(tr.out)}</span></div>
     <div class="row"><span class="mu">Rendimentos recebidos (dividendos, juros…)</span><span class="pos">${mm(iv.inc)}</span></div>
+    <div class="row"><span class="mu">Compras e vendas de ativos (compra sai do caixa; venda volta)</span><span class="${sc(iv.ops)}">${mm(iv.ops)}</span></div>
+    <div class="row"><b>Caixa no fim do mês</b><b class="${sc(cx)}">${mm(cx)}</b></div>
+    ${IA.cf!=null?`<div class="row"><span class="mu">&nbsp;&nbsp;↳ fechamento informado (caixa)</span><span>${mm(IA.cf)}</span></div>
+    <div class="row"><span class="mu">&nbsp;&nbsp;↳ diferença para o fechamento</span><b class="${Math.abs(df)<0.005?"pos":"neg"}">${Math.abs(df)<0.005?"✓ confere":mm(df)}</b></div>${Math.abs(df)>=0.005?`<div class="mu" style="color:var(--yel)">O caixa calculado não bate com o fechamento. Veja se falta um aporte ou resgate, uma compra, uma venda ou um rendimento.${prevOk?"":" Sem fechamento do mês anterior, a diferença é o dinheiro que já estava na conta antes dos lançamentos; ao fechar o mês, ela entra no caixa."}</div>`:""}`:`<div class="mu">Sem fechamento deste mês para conferir o caixa.</div>`}
+    <div class="row" style="margin-top:8px"><span class="mu">Ativos no início do mês</span><span>${mm(IA.ini)}</span></div>
+    <div class="row"><span class="mu">Compras líquidas de ativos no mês</span><span>${mm(-iv.ops)}</span></div>
     <div class="row"><span class="mu">Valorização dos ativos no mês</span><span class="${sc(va)}">${mm(va)}</span></div>
-    <div class="row"><b>Saldo final</b><b class="${sc(fin)}">${mm(fin)}</b></div>
-    <div class="row"><span class="mu">&nbsp;&nbsp;↳ em ativos (posição no fim do mês)</span><span>${mm(IA.fim)}</span></div>
-    <div class="row"><span class="mu">&nbsp;&nbsp;↳ em caixa (sem aplicar)</span><span class="${sc(cx)}">${mm(cx)}</span></div>
-    ${IA.cf!=null?`<div class="row"><span class="mu">Fechamento informado</span><span>${mm(IA.cf)}</span></div>
-    <div class="row"><span class="mu">Diferença para o fechamento</span><b class="${Math.abs(df)<0.005?"pos":"neg"}">${Math.abs(df)<0.005?"✓ confere":mm(df)}</b></div>${Math.abs(df)>=0.005?`<div class="mu" style="color:var(--yel)">O saldo calculado não bate com o fechamento. Veja se falta um aporte ou resgate, o valor da posição do mês (Atualizar cotações) ou um rendimento. No primeiro mês, a diferença é o dinheiro que já estava na conta antes do sistema.</div>`:""}`:`<div class="mu">Sem fechamento deste mês para conferir.</div>`}
-    <div class="row"><span class="mu">Compras e vendas de ativos (só movem entre caixa e ativos; não mudam o saldo)</span><span class="${sc(iv.ops)}">${mm(iv.ops)}</span></div>
-    <div class="mu">Saldo final = anterior + aportes − resgates + rendimentos + valorização. Valorização = variação do valor dos ativos no mês (posição do fim menos a do começo) já descontadas as compras e vendas. O valor de cada ativo vem do último valor informado até o fim do mês (ou do custo, se não houver). Operações e rendimentos aparecem na lista abaixo; são lançados e apagados em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;}
+    <div class="row"><b>Ativos no fim do mês (posição)</b><b>${mm(IA.fim)}</b></div>
+    <div class="row" style="border-top:2px solid var(--ac)"><b>Total (caixa + ativos)</b><b class="${sc(tt)}">${mm(tt)}</b></div>
+    <div class="mu">No início do mês: caixa ${mm(pv)} + ativos ${mm(IA.ini)} = ${mm(t0)}.</div>
+    <label>Total no extrato (opcional, só para comparar; não grava nada)<input id="itx" data-tt="${tt}" inputmode="decimal" placeholder="0,00"></label><p id="itc" class="mu"></p>
+    <div class="mu">Caixa no fim = caixa do mês anterior + aportes − resgates + rendimentos + compras e vendas. O fechamento da conta de investimento é só o CAIXA (saldo em dinheiro); os ativos vêm das posições. Valorização = variação do valor dos ativos no mês (posição do fim menos a do começo) já descontadas as compras e vendas. O valor de cada ativo vem do último valor informado até o fim do mês (ou do custo, se não houver). Operações e rendimentos aparecem na lista abaixo; são lançados e apagados em Investimentos.</div><button class="sec" id="gti">📈 Abrir Investimentos</button>`;}
   else if(fi&&mon)sumHtml=`<div class="row"><span class="mu">Saldo do mês anterior${prevOk?"":" (sem fechamento)"}</span><span class="${sc(prev)}">${mm(prev)}</span></div>
     <div class="row"><span class="mu">Rendimentos do mês</span><span class="pos">${mm(iv.inc)}</span></div>
     <div class="row"><span class="mu">Compras e vendas de ativos</span><span class="${sc(iv.ops)}">${mm(iv.ops)}</span></div>
@@ -346,6 +349,7 @@ async function viewList(){
   $("lbs").onclick=()=>viewBusca();
   $("lrel").onclick=()=>{S.rmon=mon?m0:today().slice(0,8)+"01";go("rel");};
   if($("gti"))$("gti").onclick=()=>{S.im="";go("inv");};
+  if($("itx"))$("itx").oninput=()=>{const v=num($("itx").value),t=Number($("itx").dataset.tt),e=$("itc");if(!e)return;const d=Math.round((v-t)*100)/100;e.textContent=$("itx").value.trim()===""||isNaN(v)?"":Math.abs(d)<0.005?"Comparação: confere ✓":"Comparação: diferença "+mm(d);};
   document.querySelectorAll("[data-gi]").forEach(b=>b.onclick=()=>{S.im="";go("inv");});
   if($("lm"))$("lm").onclick=async()=>{const y=window.scrollY;S.lim+=50;await viewList();window.scrollTo(0,y);};
   if($("lft"))$("lft").onchange=()=>{S.fTrip=$("lft").value||null;if(S.fTrip)S.lper="all";S.lim=50;viewList();};

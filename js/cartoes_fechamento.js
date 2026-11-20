@@ -15,7 +15,7 @@ async function viewFat(){
   const H=holdersOf(acc.id),totH=id=>-buy.filter(t=>t.card_holder_id===id).reduce((r,t)=>r+Number(t.amount),0),sh=H.some(h=>h.id===S.fatH)?S.fatH:null,vis=sh?buy.filter(t=>t.card_holder_id===sh):buy;
   $("main").innerHTML=`<div class="card"><button class="lk" id="bk">← Voltar</button> <b>Fatura do cartão</b>
    <label>Cartão<select id="fc">${cards.map(a=>`<option value="${a.id}" ${a.id===acc.id?"selected":""}>${esc(a.name)}</option>`).join("")}</select></label>
-   <div class="row" style="align-items:center"><button class="x" id="fp">‹</button><b>${mlab(m)}</b><button class="x" id="fn">›</button></div>
+   <div class="row" style="align-items:center"><button class="x" id="fp">‹</button><div style="flex:1;text-align:center"><b>${mlab(m)}</b><div><input type="month" id="fmj" value="${m.slice(0,7)}" min="2000-01" max="2100-12" title="Ir direto para um mês" style="width:auto;margin:4px auto 0;padding:4px 8px;font-size:13px"></div></div><button class="x" id="fn">›</button></div>
    ${cc?`<div class="mu">Fecha dia ${cc.closing_day} · vence dia ${cc.due_day}</div>`:'<p class="neg">Cartão sem configuração: informe os dias em "Configurar cartão".</p>'}
    <div class="row"><span>Total da fatura</span><b>${fmt(total,cur)}</b></div>
    <div class="row"><span>Já pago</span><span class="pos">${fmt(paid,cur)}</span></div>
@@ -37,6 +37,7 @@ async function viewFat(){
   $("bk").onclick=()=>go("acc");
   $("fc").onchange=()=>{S.fatAcc=$("fc").value;S.fatMon=null;S.fatH=null;viewFat();};
   $("fp").onclick=()=>{S.fatMon=mAdd(m,-1);viewFat();};$("fn").onclick=()=>{S.fatMon=mAdd(m,1);viewFat();};
+  $("fmj").onchange=()=>{const v=$("fmj").value;if(/^\d{4}-\d{2}$/.test(v)){S.fatMon=v+"-01";viewFat();}};
   $("fcc").onclick=()=>{S.cloAcc=acc.id;S.cloMon=m;go("clo");};
   if($("fpay"))$("fpay").onclick=()=>{S.trFrom="fat";S.tr={pay:true,to:acc.id,from:cc&&cc.payment_account_id||undefined,amt:rest,desc:"Pagamento da fatura "+mlab(m)+" · "+acc.name,stm:m};go("tr");};
   document.querySelectorAll("[data-mv]").forEach(b=>b.onclick=async()=>{const [id,d]=b.dataset.mv.split("|");
